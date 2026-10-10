@@ -36,6 +36,8 @@ export interface PixelFormat {
   blueShift: number;
 }
 
+const BLOCKED_COMBOS = new Set(['alt+f4', 'ctrl+w', 'ctrl+q', 'ctrl+shift+w', 'f11', 'alt+tab', 'ctrl+alt+delete', 'ctrl+alt+del']);
+
 export class RfbClient {
   private ws?: WebSocket;
   private rxBuffer = Buffer.alloc(0);
@@ -501,6 +503,10 @@ export class RfbClient {
    * Sends a key combination (e.g. "ctrl+a", "backspace", "enter", "tab").
    */
   public async sendKeyCombo(combo: string): Promise<void> {
+    const normalized = combo.toLowerCase().replace(/\s+/g, '');
+    if (BLOCKED_COMBOS.has(normalized)) {
+      throw new Error(`Atajo bloqueado por seguridad: ${combo}`);
+    }
     const parsed = parseKeyCombo(combo);
 
     if (parsed.ctrl) this.sendKey(true, SPECIAL_KEYSYMS.Control_L);

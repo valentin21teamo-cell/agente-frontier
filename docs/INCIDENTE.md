@@ -3,7 +3,7 @@
 ## 1. Qué Cambió (según el ticket y el modal)
 La aplicación empresarial bajo prueba actualizó su versión de interfaz:
 - **Versión de la aplicación:** Pasó a `SIGECOM · Distribuidora Andina v4.2` (identificada en la cabecera superior izquierda).
-- **Paleta visual:** Cabecera con fondo verde oscuro / gris verdoso (`#1f3b63` reemplazado por la paleta v4.2).
+- **Paleta visual:** Cabecera con fondo verde oscuro / gris verdoso (`#1d3d29` medido en la franja superior).
 - **Fecha y contexto de usuario:** `"Hoy: 14/10/2026 · Usuario: operador2"` (formato de fecha `dd/mm/aaaa`, donde la fecha de la aplicación prevalece sobre la fecha del sistema host).
 - **Modal de inicio emergente:** Al reiniciar la sesión aparece una ventana modal titulada `"Novedades de la versión 4.2"` con el siguiente contenido textual:
   - *"Los formularios ahora se aplican sin cerrarse, para que pueda seguir trabajando sobre el mismo registro."*

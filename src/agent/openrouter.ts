@@ -14,6 +14,7 @@ import { safeLogger } from '../security/sanitize.js';
 export type AgentActionType =
   | 'click'
   | 'double_click'
+  | 'move'
   | 'type_text'
   | 'press_key'
   | 'key_combo'
@@ -100,8 +101,9 @@ export class OpenRouterClient {
       '5. {"action": "key_combo", "combo": "ctrl+a", "pensamiento": "Seleccionar todo"}',
       '6. {"action": "scroll", "direction": "down", "amount": 3, "pensamiento": "Bajar para ver más facturas"}',
       '7. {"action": "wait", "ms": 1000, "pensamiento": "Esperar carga de tabla"}',
-      '8. {"action": "finish", "resultado": "45", "resumen": "Se encontraron 45 facturas vencidas para Ferretería Ruiz", "pensamiento": "Tarea cumplida con éxito y verificada"}',
-      '9. {"action": "fail", "razon": "No se puede cambiar el teléfono porque existen dos clientes con cédulas 52345678 y 1019876543 con el mismo nombre", "pensamiento": "Caso imposible o ambiguo detectado"}',
+      '8. {"action": "finish", "resultado": "<valor leído en pantalla, solo si la tarea pedía un dato>", "resumen": "<qué se hizo y qué se verificó>", "pensamiento": "Tarea cumplida y verificada en pantalla"}',
+      '9. {"action": "fail", "razon": "<motivo exacto>; claves: <clave1>, <clave2>", "pensamiento": "Caso imposible o ambiguo detectado"}',
+      '10. {"action": "move", "x": 350, "y": 120, "pensamiento": "Pasar el mouse sobre el menú para abrir su submenú"}',
       '',
       'IMPORTANTE: Responde ÚNICAMENTE el bloque JSON, sin texto explicativo adicional fuera del JSON.'
     ].join('\n');

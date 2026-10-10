@@ -8,8 +8,6 @@
 
 import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
-import fs from 'node:fs';
-import path from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import { globalTaskStore, TaskRecord } from './tasks/store.js';
 import { sanitize, safeLogger } from './security/sanitize.js';
@@ -102,39 +100,6 @@ app.get('/status', (_req: Request, res: Response) => {
     total_tasks: globalTaskStore.getTotalCount(),
     uptime_seconds: Math.floor(process.uptime()),
   });
-});
-
-app.get('/captura.png', (_req: Request, res: Response) => {
-  const p = path.resolve('captura.png');
-  if (fs.existsSync(p)) {
-    res.setHeader('Content-Type', 'image/png');
-    res.sendFile(p);
-  } else {
-    res.status(404).send('No captura disponible');
-  }
-});
-
-app.get('/debug-cal', (_req: Request, res: Response) => {
-  res.setHeader('Content-Type', 'text/html');
-  res.send(`<!DOCTYPE html>
-<html>
-<head><title>Calibracion SIGECOM</title></head>
-<body style="margin:0; background:#111; color:#eee; font-family:sans-serif; text-align:center; padding:20px;">
-  <h2>Captura Actual del Escritorio (1280x800)</h2>
-  <img src="/captura.png" style="max-width:100%; border:2px solid #555; border-radius:4px;" alt="Captura SIGECOM" />
-</body>
-</html>`);
-});
-
-app.get('/debug-view/:file', (req: Request, res: Response) => {
-  const safeFile = path.basename(req.params.file);
-  const p = path.resolve('debug', safeFile);
-  if (fs.existsSync(p)) {
-    res.setHeader('Content-Type', 'image/png');
-    res.sendFile(p);
-  } else {
-    res.status(404).send('Archivo no encontrado');
-  }
 });
 
 /**

@@ -34,7 +34,7 @@ REGLAS DE OPERACIÓN ESTRICTAS:
    - La imagen recibida tiene una rejilla métrica visual con líneas finas discontinuas rojas cada 100 píxeles (en x=100, 200, 300... e y=100, 200, 300...).
    - Utiliza estas líneas rojas cada 100px como referencia métrica para estimar las coordenadas (x, y) de cada botón o campo con precisión antes de hacer clic.
    - Apunta al centro exacto del elemento.
-   - Menús desplegables: Las opciones de un menú desplegado tienen un alto de fila compacto (típicamente 20 a 25 píxeles). Las primeras opciones se ubican inmediatamente debajo de la barra de menú (entre y=65 e y=105). Observa la posición vertical exacta del texto de cada opción para no pulsar fuera del menú. Si una opción muestra una flecha hacia la derecha, pulsa sobre la opción o sobre la flecha para desplegar su submenú hacia la derecha.
+   - Menús desplegables: observa la posición vertical exacta del texto de cada opción para no pulsar fuera del menú. Si una opción muestra una flecha hacia la derecha, es un submenú: pulsa sobre ella o usa la acción move (pasar el mouse) y verifica en la captura que el submenú se abrió antes de continuar.
 6. Escritura de Texto:
    - Los campos pueden tener texto previo. La acción type_text limpia automáticamente con Ctrl+A y Backspace antes de escribir si clear_first es true.
    - Para caracteres en español (tildes, ñ, #, @), el sistema maneja la codificación adecuada.
@@ -221,14 +221,19 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
       if (action.action === 'click' && action.x !== undefined && action.y !== undefined) {
         let targetX = mapX(action.x);
         let targetY = mapY(action.y);
-        const snapRadius = consecutiveNoChangeCount >= 1 ? 260 : 60;
-        const snapped = snapToNearestElement(screenshot, targetX, targetY, snapRadius);
+        // Snap opcional (apagado por defecto): el detector fue calibrado solo con la app de práctica.
+        const snapped =
+          process.env.SNAP_CLICKS === '1'
+            ? snapToNearestElement(screenshot, targetX, targetY, 40)
+            : { snapped: false, x: targetX, y: targetY };
         if (snapped.snapped) {
           safeLogger.info(`[Agent] Centrado de clic: de (${targetX}, ${targetY}) a centro de elemento (${snapped.x}, ${snapped.y})`);
           targetX = snapped.x;
           targetY = snapped.y;
         }
         await client.mouseClick(targetX, targetY);
+      } else if (action.action === 'move' && action.x !== undefined && action.y !== undefined) {
+        client.sendPointer(0, mapX(action.x), mapY(action.y));
       } else if (action.action === 'double_click' && action.x !== undefined && action.y !== undefined) {
         await client.mouseDoubleClick(mapX(action.x), mapY(action.y));
       } else if (action.action === 'type_text' && action.text !== undefined) {
@@ -278,6 +283,8 @@ function formatActionForHistory(action: AgentAction): string {
   switch (action.action) {
     case 'click':
       return `Clic en (${action.x}, ${action.y})${action.pensamiento ? ` [${action.pensamiento}]` : ''}`;
+    case 'move':
+      return `Pasó el mouse por (${action.x}, ${action.y})${action.pensamiento ? ` [${action.pensamiento}]` : ''}`;
     case 'double_click':
       return `Doble clic en (${action.x}, ${action.y})${action.pensamiento ? ` [${action.pensamiento}]` : ''}`;
     case 'type_text':
