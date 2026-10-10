@@ -86,7 +86,7 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
     safeLogger.info(`[Agent] Conectado a escritorio (${init.width}x${init.height})`);
 
     // 2. Wait for first screen render
-    await client.waitForFirstFrame(30000);
+    await client.waitForFirstFrame(60000);
     // Allow initial UI settling
     await new Promise((r) => setTimeout(r, 1200));
 

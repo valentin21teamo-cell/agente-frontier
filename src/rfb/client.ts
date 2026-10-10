@@ -123,16 +123,25 @@ export class RfbClient {
   public async waitForFirstFrame(timeoutMs = 10000): Promise<void> {
     if (this.hasReceivedFirstFrame) return;
 
-    // Si el escritorio acaba de reiniciarse, puede tardar en pintar: pedimos el cuadro completo cada 2 s.
+    // Solo reintenta la petición si NO ha llegado ni un byte (evita saturar el enlace con cuadros completos).
+    const startBytes = this.bytesReceived;
     const retry = setInterval(() => {
-      if (!this.hasReceivedFirstFrame) this.requestFramebufferUpdate(false);
-    }, 2000);
+      if (!this.hasReceivedFirstFrame && this.bytesReceived === startBytes) this.requestFramebufferUpdate(false);
+    }, 4000);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
         this.initialFramePromise,
         new Promise<void>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('Timeout esperando primer fotograma del framebuffer')), timeoutMs);
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `Timeout esperando primer fotograma del framebuffer (bytes recibidos tras ServerInit: ${this.bytesReceived - startBytes}, cuadro completo esperado: ${this.width * this.height * 4})`
+                )
+              ),
+            timeoutMs
+          );
         }),
       ]);
     } finally {
@@ -141,7 +150,10 @@ export class RfbClient {
     }
   }
 
+  private bytesReceived = 0;
+
   private handleIncomingData(chunk: Buffer): void {
+    this.bytesReceived += chunk.length;
     this.rxBuffer = Buffer.concat([this.rxBuffer, chunk]);
 
     while (this.rxBuffer.length > 0) {

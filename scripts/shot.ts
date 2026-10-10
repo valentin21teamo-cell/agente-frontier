@@ -36,7 +36,7 @@ async function main() {
     safeLogger.info(`[shot.ts] Escritorio: "${initInfo.serverName}"`);
 
     // Esperar primer fotograma completo del framebuffer
-    await client.waitForFirstFrame(10000);
+    await client.waitForFirstFrame(60000);
     // Espera de asentamiento para repintado completo
     await new Promise((r) => setTimeout(r, 1200));
 
