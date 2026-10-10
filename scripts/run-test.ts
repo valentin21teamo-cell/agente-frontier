@@ -71,6 +71,8 @@ export async function resetDesktop(): Promise<boolean> {
   }
 
   const data = (await res.json()) as { ok: boolean };
+  // El escritorio necesita unos segundos para volver a pintarse tras el reset.
+  await new Promise((r) => setTimeout(r, 6000));
   return data.ok;
 }
 
