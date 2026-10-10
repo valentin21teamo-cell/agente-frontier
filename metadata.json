@@ -1,0 +1,6 @@
+{
+  "name": "VNC Autonomous Agent Server",
+  "description": "Servidor autónomo para operación de escritorio remoto vía VNC/RFB.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
