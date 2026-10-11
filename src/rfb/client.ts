@@ -483,9 +483,25 @@ export class RfbClient {
    * 5. MouseUp (buttonMask 0)
    * 6. Wait 1000 ms settling time for app repaint
    */
+  private lastX = 0;
+  private lastY = 0;
+
+  /** Mueve el puntero por una trayectoria corta (como una mano), para que los menús por hover registren el paso. */
+  public async movePath(x: number, y: number): Promise<void> {
+    const steps = 6;
+    const sx = this.lastX;
+    const sy = this.lastY;
+    for (let i = 1; i <= steps; i++) {
+      this.sendPointer(0, sx + ((x - sx) * i) / steps, sy + ((y - sy) * i) / steps);
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    this.lastX = x;
+    this.lastY = y;
+  }
+
   public async mouseClick(x: number, y: number): Promise<void> {
-    this.sendPointer(0, x, y);
-    await new Promise((r) => setTimeout(r, 20));
+    await this.movePath(x, y);
+    await new Promise((r) => setTimeout(r, 250)); // deja que el hover se pinte antes de pulsar
     this.sendPointer(1, x, y);
     await new Promise((r) => setTimeout(r, 120));
     this.sendPointer(0, x, y);

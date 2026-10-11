@@ -33,6 +33,7 @@ REGLAS DE OPERACIÓN ESTRICTAS:
 5. Percepción y Coordenadas con Rejilla Métrica:
    - La imagen recibida tiene una rejilla de líneas rojas discontinuas cada 100 píxeles. En cada cruce hay una etiqueta amarilla con sus coordenadas reales "x,y" (por ejemplo "300,200"; la etiqueta está a la derecha y debajo del cruce).
    - Para estimar la coordenada de un botón o campo: ubica la etiqueta más cercana, mide cuántos píxeles te separas de ese cruce (1 cuadro de rejilla = 100 px) y suma o resta. Usa SIEMPRE las coordenadas de las etiquetas, nunca las proporciones de la imagen.
+   - Menús en cascada: el submenú se abre A LA DERECHA del elemento padre (x mayor), no debajo. Pasa el ratón (move) sobre el padre, mira la captura, y haz clic en el elemento hijo dentro del recuadro del submenú desplegado. Un elemento con flecha a la derecha es otro submenú, no una acción final: la opción que buscas es la que NO tiene flecha. Un clic sobre un menú ya abierto lo cierra: no vuelvas a pulsar el menú principal si ya está desplegado.
    - Si un clic no cambia la pantalla, NO repitas las mismas coordenadas: mueve el punto hacia el centro del elemento según la rejilla o prueba otra vía (Enter, Escape, Tab).
    - Apunta al centro exacto del elemento.
    - Menús desplegables: observa la posición vertical exacta del texto de cada opción para no pulsar fuera del menú. Si una opción muestra una flecha hacia la derecha, es un submenú: pulsa sobre ella o usa la acción move (pasar el mouse) y verifica en la captura que el submenú se abrió antes de continuar.
@@ -234,7 +235,7 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         }
         await client.mouseClick(targetX, targetY);
       } else if (action.action === 'move' && action.x !== undefined && action.y !== undefined) {
-        client.sendPointer(0, mapX(action.x), mapY(action.y));
+        await client.movePath(mapX(action.x), mapY(action.y));
       } else if (action.action === 'double_click' && action.x !== undefined && action.y !== undefined) {
         await client.mouseDoubleClick(mapX(action.x), mapY(action.y));
       } else if (action.action === 'type_text' && action.text !== undefined) {
