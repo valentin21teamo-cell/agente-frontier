@@ -77,3 +77,16 @@ test('OCR - captura real de SIGECOM: "Entendido" y menús con precisión de píx
   const com = findTextMatches(words, 'Comercial')[0];
   assert.ok(Math.abs(com.box.y + com.box.h / 2 - 43) <= 5, 'Comercial del menú superior');
 });
+
+test('OCR - findFieldNearLabel con campo que ya tiene texto y borde suave sobre fondo blanco', () => {
+  const W = 500, H = 80;
+  const png = new PNG({ width: W, height: H });
+  for (let i = 0; i < W * H; i++) { png.data[i * 4] = 255; png.data[i * 4 + 1] = 255; png.data[i * 4 + 2] = 255; png.data[i * 4 + 3] = 255; }
+  const set = (x: number, y: number, v: number) => { const i = (y * W + x) * 4; png.data[i] = v; png.data[i + 1] = v; png.data[i + 2] = v; };
+  // Caja x=160..460, y=30..54 con borde #ccc (204) e interior blanco; texto oscuro desde x=168
+  for (let x = 160; x <= 460; x++) { set(x, 30, 204); set(x, 54, 204); }
+  for (let y = 30; y <= 54; y++) { set(160, y, 204); set(460, y, 204); }
+  for (let x = 168; x < 300; x += 3) for (let y = 37; y < 47; y++) set(x, y, 40);
+  const p = findFieldNearLabel(PNG.sync.write(png), { x: 60, y: 37, w: 70, h: 10 });
+  assert.ok(p && p.x > 160 && p.x < 460 && p.y > 30 && p.y < 54, JSON.stringify(p));
+});

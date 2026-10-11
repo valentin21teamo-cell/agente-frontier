@@ -258,7 +258,8 @@ export function extractTargetText(objetivo?: string, texto?: string): string | n
 
 /**
  * Busca la caja de entrada asociada a una etiqueta: primero a la derecha (misma fila), luego debajo.
- * Detecta un borde seguido de un interior claro y uniforme. Devuelve un punto dentro del campo o null.
+ * Una caja se reconoce por un borde vertical (u horizontal) seguido de relleno claro, confirmado por los
+ * bordes perpendiculares a pocos píxeles. Funciona aunque el campo ya tenga texto. Devuelve un punto dentro o null.
  */
 export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y: number } | null {
   const png = PNG.sync.read(pngBuf);
@@ -268,29 +269,43 @@ export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y:
     const i = (Math.min(H - 1, Math.max(0, y)) * W + Math.min(W - 1, Math.max(0, x))) * 4;
     return 0.299 * png.data[i] + 0.587 * png.data[i + 1] + 0.114 * png.data[i + 2];
   };
+  const light = (x: number, y: number) => L(x, y) > 200;
+  const edgeV = (x: number, y: number) => Math.abs(L(x, y) - L(x - 1, y)) >= 20 || Math.abs(L(x + 1, y) - L(x, y)) >= 20;
+  const edgeH = (x: number, y: number) => Math.abs(L(x, y) - L(x, y - 1)) >= 20 || Math.abs(L(x, y + 1) - L(x, y)) >= 20;
   const cy = Math.round(label.y + label.h / 2);
 
-  // A la derecha: borde (cambio fuerte) y luego al menos 40 px de interior claro.
-  for (let x = Math.round(label.x + label.w + 3); x < Math.min(W - 45, label.x + label.w + 500); x++) {
-    if (Math.abs(L(x, cy) - L(x - 1, cy)) < 30) continue;
-    let run = 0;
-    for (let k = 1; k <= 60 && x + k < W; k++) {
-      if (L(x + k, cy) > 225 && Math.abs(L(x + k, cy) - L(x + k - 1, cy)) < 25) run++;
-      else if (run > 0) break;
+  // A la derecha: borde vertical + 6 px claros + bordes superior e inferior a 4..22 px.
+  for (let x = Math.round(label.x + label.w + 3); x < Math.min(W - 30, label.x + label.w + 520); x++) {
+    if (!edgeV(x, cy)) continue;
+    let pad = true;
+    for (let k = 2; k <= 7; k++) if (!light(x + k, cy)) pad = false;
+    if (!pad) continue;
+    let top = -1;
+    let bottom = -1;
+    for (let d = 4; d <= 22; d++) {
+      if (top < 0 && edgeH(x + 5, cy - d)) top = cy - d;
+      if (bottom < 0 && edgeH(x + 5, cy + d)) bottom = cy + d;
     }
-    if (run >= 40) return { x: x + Math.min(60, Math.round(run / 2) + 5), y: cy };
+    if (top >= 0 && bottom >= 0 && bottom - top >= 12 && bottom - top <= 60) {
+      return { x: x + 25, y: Math.round((top + bottom) / 2) };
+    }
   }
 
-  // Debajo: borde horizontal y luego al menos 10 px de interior claro.
+  // Debajo: borde horizontal + 5 px claros + borde izquierdo o derecho cerca.
   const sx = Math.round(label.x + Math.min(20, label.w / 2));
   for (let y = Math.round(label.y + label.h + 2); y < Math.min(H - 12, label.y + label.h + 50); y++) {
-    if (Math.abs(L(sx, y) - L(sx, y - 1)) < 30) continue;
-    let run = 0;
-    for (let k = 1; k <= 30 && y + k < H; k++) {
-      if (L(sx, y + k) > 225) run++;
-      else if (run > 0) break;
+    if (!edgeH(sx, y)) continue;
+    let pad = true;
+    for (let k = 2; k <= 6; k++) if (!light(sx, y + k)) pad = false;
+    if (!pad) continue;
+    let bottom = -1;
+    for (let d = 10; d <= 50; d++) {
+      if (edgeH(sx, y + d)) {
+        bottom = y + d;
+        break;
+      }
     }
-    if (run >= 10) return { x: sx + 20, y: y + Math.round(run / 2) + 1 };
+    if (bottom > 0) return { x: sx + 20, y: Math.round((y + bottom) / 2) };
   }
   return null;
 }

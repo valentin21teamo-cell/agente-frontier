@@ -158,8 +158,18 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
             }
           }
           if (action.action === 'type_text') {
-            const field = findFieldNearLabel(screenshot, best.box);
-            if (field) return { x: field.x, y: field.y, via: `ocr("${best.text}")+campo`, costUsd };
+            // La etiqueta puede repetirse (p. ej. como encabezado de tabla): vale la que tiene un campo al lado.
+            for (const cand of [best, ...matches.filter((m) => m !== best)].slice(0, 4)) {
+              const field = findFieldNearLabel(screenshot, cand.box);
+              if (field) return { x: field.x, y: field.y, via: `ocr("${cand.text}")+campo`, costUsd };
+            }
+            // Sin caja detectada: el diseño más común es etiqueta a la izquierda y campo a la derecha.
+            return {
+              x: Math.min(client.width - 5, Math.round(best.box.x + best.box.w + 45)),
+              y: Math.round(best.box.y + best.box.h / 2),
+              via: `ocr("${best.text}")+derecha`,
+              costUsd,
+            };
           } else {
             return {
               x: Math.round(best.box.x + best.box.w / 2),

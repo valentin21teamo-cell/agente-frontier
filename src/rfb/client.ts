@@ -570,8 +570,20 @@ export class RfbClient {
    */
   public async typeText(text: string, clearFirst = true): Promise<void> {
     if (clearFirst) {
-      await this.sendKeyCombo('ctrl+a');
-      await this.sendKeyCombo('backspace');
+      // Ctrl+A y Backspace rápidos: la espera de repintado de 1 s se hace una sola vez al final.
+      this.sendKey(true, SPECIAL_KEYSYMS.Control_L);
+      await new Promise((r) => setTimeout(r, 30));
+      const a = charToKeyStroke('a');
+      this.sendKey(true, a.keysym);
+      await new Promise((r) => setTimeout(r, 40));
+      this.sendKey(false, a.keysym);
+      await new Promise((r) => setTimeout(r, 30));
+      this.sendKey(false, SPECIAL_KEYSYMS.Control_L);
+      await new Promise((r) => setTimeout(r, 120));
+      this.sendKey(true, SPECIAL_KEYSYMS.BackSpace);
+      await new Promise((r) => setTimeout(r, 40));
+      this.sendKey(false, SPECIAL_KEYSYMS.BackSpace);
+      await new Promise((r) => setTimeout(r, 150));
     }
 
     for (let i = 0; i < text.length; i++) {
