@@ -188,9 +188,18 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
   while (Date.now() - startTime < maxWaitMs) {
     await new Promise((r) => setTimeout(r, 5000));
 
-    const pollRes = await fetch(`${AGENT_BASE}/tasks/${taskId}`, {
-      headers: { Authorization: `Bearer ${TEAM_TOKEN}` },
-    });
+    // Un corte de red al consultar no debe tumbar la prueba: se registra y se vuelve a consultar.
+    let pollRes: Response;
+    try {
+      pollRes = await fetch(`${AGENT_BASE}/tasks/${taskId}`, {
+        headers: { Authorization: `Bearer ${TEAM_TOKEN}` },
+        signal: AbortSignal.timeout(20000),
+      });
+    } catch (e: any) {
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      console.log(`[${elapsed}s] Error de red al consultar el estado (${e?.cause?.code || e?.name || 'desconocido'}); reintentando...`);
+      continue;
+    }
 
     if (!pollRes.ok) continue;
 
@@ -293,8 +302,14 @@ async function main() {
       const fullPath = path.join(pruebasDir, item.file);
       if (fs.existsSync(fullPath)) {
         const testCase = JSON.parse(fs.readFileSync(fullPath, 'utf-8')) as TestCase;
-        const rep = await runBenchmarkTask(testCase);
-        allReports.push(rep);
+        try {
+          const rep = await runBenchmarkTask(testCase);
+          allReports.push(rep);
+        } catch (e: any) {
+          // Un error de red en una prueba no detiene las demás.
+          console.error(`[Runner] ${item.id} no se pudo completar: ${e?.cause?.code || e?.message || e}. Sigo con la siguiente.`);
+          await new Promise((r) => setTimeout(r, 5000));
+        }
       }
     }
 
