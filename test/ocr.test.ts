@@ -1,0 +1,79 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { PNG } from 'pngjs';
+import {
+  ocrAvailable,
+  ocrScreenshot,
+  findTextMatches,
+  extractTargetText,
+  findFieldNearLabel,
+  OcrWord,
+} from '../src/agent/ocr.js';
+
+const w = (text: string, x: number, y: number, line: string, conf = 95): OcrWord => ({
+  text,
+  conf,
+  box: { x, y, w: text.length * 7, h: 10 },
+  lineKey: line,
+});
+
+test('OCR - extractTargetText usa "texto" o lo que va entre comillas', () => {
+  assert.equal(extractTargetText("botón 'Entendido' del diálogo"), 'Entendido');
+  assert.equal(extractTargetText('menú “Comercial”'), 'Comercial');
+  assert.equal(extractTargetText('icono de lupa'), null);
+  assert.equal(extractTargetText('lo que sea', 'Guardar'), 'Guardar');
+});
+
+test('OCR - findTextMatches prefiere la etiqueta suelta, tolera tildes y errores leves', () => {
+  const words = [
+    w('Comercial', 126, 39, 'A:1-1-1'),
+    w('Use', 229, 94, 'A:1-1-2'),
+    w('comercial.', 169, 93, 'A:1-1-2'),
+    w('Teléfono', 300, 200, 'A:2-1-1'),
+    w('Nuevo', 400, 300, 'A:3-1-1'),
+    w('cl1ente', 445, 300, 'A:3-1-1', 80),
+  ];
+  const m = findTextMatches(words, 'Comercial');
+  assert.equal(m[0].box.y, 39, 'debe elegir el menú y no el texto del cuerpo');
+  assert.ok(findTextMatches(words, 'Telefono').length === 1, 'sin tilde también');
+  assert.ok(findTextMatches(words, 'Nuevo cliente').length === 1, 'frase con error OCR de 1 letra');
+  assert.equal(findTextMatches(words, 'Eliminar').length, 0);
+});
+
+test('OCR - findFieldNearLabel encuentra la caja de entrada a la derecha de la etiqueta', () => {
+  const png = new PNG({ width: 400, height: 100 });
+  png.data.fill(0);
+  for (let i = 0; i < 400 * 100; i++) {
+    png.data[i * 4] = 210; png.data[i * 4 + 1] = 215; png.data[i * 4 + 2] = 225; png.data[i * 4 + 3] = 255;
+  }
+  // Caja de entrada: borde gris oscuro x=150..350, y=40..62, interior blanco
+  for (let y = 40; y <= 62; y++) {
+    for (let x = 150; x <= 350; x++) {
+      const border = x === 150 || x === 350 || y === 40 || y === 62;
+      const v = border ? 120 : 255;
+      const i = (y * 400 + x) * 4;
+      png.data[i] = v; png.data[i + 1] = v; png.data[i + 2] = v;
+    }
+  }
+  const p = findFieldNearLabel(PNG.sync.write(png), { x: 40, y: 46, w: 60, h: 10 });
+  assert.ok(p, 'debe encontrar el campo');
+  assert.ok(p!.x > 150 && p!.x < 350 && p!.y > 40 && p!.y < 62, JSON.stringify(p));
+});
+
+test('OCR - captura real de SIGECOM: "Entendido" y menús con precisión de píxel', { timeout: 60000 }, async (t) => {
+  if (!(await ocrAvailable())) {
+    t.skip('Tesseract no está instalado en esta máquina');
+    return;
+  }
+  // Captura del usuario (imagen a escala 0.83 de la pantalla real); el botón "Entendido" está en ≈(749,404).
+  const buf = fs.readFileSync('test/fixtures/sigecom-modal.png');
+  const words = await ocrScreenshot(buf);
+  const ent = findTextMatches(words, 'Entendido')[0];
+  assert.ok(ent, 'debe encontrar Entendido');
+  const cx = ent.box.x + ent.box.w / 2;
+  const cy = ent.box.y + ent.box.h / 2;
+  assert.ok(Math.abs(cx - 749) <= 6 && Math.abs(cy - 404) <= 5, `Entendido en (${cx},${cy})`);
+  const com = findTextMatches(words, 'Comercial')[0];
+  assert.ok(Math.abs(com.box.y + com.box.h / 2 - 43) <= 5, 'Comercial del menú superior');
+});

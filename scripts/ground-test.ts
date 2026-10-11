@@ -10,6 +10,7 @@ import { PNG } from 'pngjs';
 import { RfbClient } from '../src/rfb/client.js';
 import { OpenRouterClient } from '../src/agent/openrouter.js';
 import { groundTarget, groundingModel } from '../src/agent/grounder.js';
+import { ocrAvailable, ocrScreenshot, findTextMatches, extractTargetText } from '../src/agent/ocr.js';
 
 dotenv.config();
 
@@ -28,6 +29,14 @@ async function main() {
   await new Promise((r) => setTimeout(r, 1500));
   const shot = await client.captureScreenshotPng();
 
+  const wanted = extractTargetText(objetivo);
+  if (wanted && (await ocrAvailable())) {
+    const t1 = Date.now();
+    const m = findTextMatches(await ocrScreenshot(shot), wanted);
+    console.log(`[ground-test] OCR "${wanted}":`, m.slice(0, 3).map((x) => `(${Math.round(x.box.x + x.box.w / 2)},${Math.round(x.box.y + x.box.h / 2)}) "${x.text}"`).join(' | ') || 'sin coincidencias', `${Date.now() - t1} ms`);
+  } else {
+    console.log('[ground-test] OCR no disponible en esta máquina (Tesseract no instalado); en Cloud Run sí lo está.');
+  }
   const t0 = Date.now();
   const out = await groundTarget(new OpenRouterClient(), shot, objetivo, client.width, client.height);
   const ms = Date.now() - t0;

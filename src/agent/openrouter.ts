@@ -23,6 +23,7 @@ export type AgentActionType =
 export interface AgentAction {
   action: AgentActionType;
   objetivo?: string;
+  texto?: string;
   x?: number;
   y?: number;
   text?: string;
@@ -102,16 +103,17 @@ const ACTION_FORMATS = [
   'Devuelve EXACTAMENTE un objeto JSON con esta forma:',
   '{"pensamiento": "<qué ves y qué harás>", "acciones": [<de 1 a 6 acciones>]}',
   '',
-  'Acciones disponibles. En "objetivo" describe QUÉ elemento: su texto visible exacto, el tipo y la zona.',
-  'El sistema localiza el objetivo con precisión: NO necesitas calcular coordenadas.',
-  '- {"action":"click","objetivo":"botón \'<texto>\' del diálogo <título>"}',
-  '- {"action":"double_click","objetivo":"fila de <dato visible> en la tabla <nombre>"}',
-  '- {"action":"move","objetivo":"opción \'<texto>\' del menú <nombre>"}   (pasa el ratón para abrir submenús)',
-  '- {"action":"type_text","objetivo":"campo \'<etiqueta>\' del formulario <nombre>","text":"<texto>","clear_first":true}   (hace clic en el campo, lo limpia y escribe)',
+  'Acciones disponibles. En "objetivo" describe QUÉ elemento (tipo y zona) y en "texto" copia EXACTAMENTE el texto visible',
+  'del elemento tal como aparece en pantalla (para campos: el texto de su etiqueta). El sistema lo encuentra con OCR',
+  'con precisión de píxel: NO calcules coordenadas. Para iconos sin texto, omite "texto" y describe bien el objetivo.',
+  '- {"action":"click","objetivo":"botón del diálogo <título>","texto":"<texto del botón>"}',
+  '- {"action":"double_click","objetivo":"fila de la tabla <nombre>","texto":"<dato visible en la fila>"}',
+  '- {"action":"move","objetivo":"opción del menú <nombre>","texto":"<texto de la opción>"}   (pasa el ratón para abrir submenús)',
+  '- {"action":"type_text","objetivo":"campo del formulario <nombre>","texto":"<etiqueta del campo>","text":"<lo que se escribe>","clear_first":true}   (hace clic en el campo, lo limpia y escribe)',
   '- {"action":"type_text","text":"<texto>"}   (escribe en el campo que ya tiene el foco)',
   '- {"action":"press_key","key":"Enter"}   (también Tab, Escape, Down, Up, Page_Down)',
   '- {"action":"key_combo","combo":"ctrl+f"}',
-  '- {"action":"scroll","objetivo":"<zona o tabla>","direction":"down","amount":3}',
+  '- {"action":"scroll","objetivo":"<zona o tabla>","texto":"<algún texto visible de esa zona>","direction":"down","amount":3}',
   '- {"action":"wait","ms":1000}',
   '- {"action":"finish","resultado":"<solo el dato pedido, si la tarea pedía un dato>","resumen":"<qué hiciste y qué verificaste en pantalla>"}',
   '- {"action":"fail","razon":"<motivo exacto>; claves: <identificadores que causan el problema>"}',

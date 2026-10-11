@@ -1,11 +1,12 @@
 /**
  * Bucle del agente autónomo.
  *
- * Arquitectura de dos roles:
+ * Arquitectura por roles:
  *  1. Planificador (MODEL_ID): ve la captura limpia y decide un LOTE de acciones que nombran su objetivo
- *     ("botón 'Guardar' del formulario Cliente"), sin calcular coordenadas.
- *  2. Localizador (GROUNDING_MODEL_ID): convierte cada objetivo en una caja precisa (grounder.ts),
- *     con una segunda pasada ampliada para elementos pequeños.
+ *     y su texto visible ("botón del diálogo", texto "Guardar"), sin calcular coordenadas.
+ *  2. Localizador exacto (ocr.ts, Tesseract): encuentra ese texto en la captura con precisión de píxel;
+ *     para campos, busca la caja de entrada junto a la etiqueta.
+ *  3. Localizador de visión (GROUNDING_MODEL_ID, grounder.ts): respaldo para elementos sin texto y desempate.
  * Cada acción se verifica comparando la pantalla antes y después; el efecto vuelve al planificador
  * en el historial. Límites: plazo, pasos, costo, pasos seguidos sin cambio, atajos peligrosos bloqueados.
  */
@@ -17,6 +18,7 @@ import { RfbClient } from '../rfb/client.js';
 import { OpenRouterClient, AgentAction } from './openrouter.js';
 import { safeLogger } from '../security/sanitize.js';
 import { groundTarget } from './grounder.js';
+import { ocrScreenshot, findTextMatches, findFieldNearLabel, extractTargetText } from './ocr.js';
 import { applyLadder, TriedPoint } from './clickLadder.js';
 
 const SYSTEM_PROMPT = `Eres un agente autónomo experto en operar software de gestión empresarial (aplicaciones de escritorio legadas) mediante capturas de pantalla, ratón y teclado.
@@ -48,7 +50,7 @@ interface ActionOutcome {
 }
 
 function describeAction(a: AgentAction): string {
-  const target = a.objetivo ? ` "${a.objetivo}"` : '';
+  const target = a.objetivo || a.texto ? ` "${a.objetivo ?? ''}${a.texto ? ` [${a.texto}]` : ''}"` : '';
   switch (a.action) {
     case 'click':
       return `Clic en${target}`;
@@ -57,7 +59,7 @@ function describeAction(a: AgentAction): string {
     case 'move':
       return `Pasó el ratón por${target}`;
     case 'type_text':
-      return `Escribió "${a.text ?? ''}"${a.objetivo ? ` en "${a.objetivo}"` : ''}`;
+      return `Escribió "${a.text ?? ''}"${a.objetivo || a.texto ? ` en "${a.objetivo ?? ''}${a.texto ? ` [${a.texto}]` : ''}"` : ''}`;
     case 'press_key':
       return `Tecla ${a.key}`;
     case 'key_combo':
@@ -127,9 +129,56 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
     screenshot: Buffer
   ): Promise<{ x: number; y: number; via: string; costUsd: number } | { x: null; costUsd: number; reason: string }> {
     let costUsd = 0;
+
+    // 1) Texto visible -> OCR (coordenadas exactas, sin IA).
+    const wanted = extractTargetText(action.objetivo, action.texto);
+    if (wanted) {
+      try {
+        const words = await ocrScreenshot(screenshot);
+        const matches = findTextMatches(words, wanted);
+        if (matches.length > 0) {
+          let best = matches[0];
+          const rivals = matches.filter((m) => m.score >= best.score - 0.1);
+          if (rivals.length > 1 && action.objetivo) {
+            // Varios textos iguales: el localizador de visión (bueno en x, impreciso en y) elige el más cercano.
+            try {
+              const g = await groundTarget(router, screenshot, action.objetivo, client.width, client.height, {
+                abortSignal: signal,
+                zoom: false,
+              });
+              costUsd += g.costUsd;
+              if (g.point) {
+                const pt = g.point;
+                const dist = (m: typeof best) =>
+                  Math.abs(m.box.x + m.box.w / 2 - pt.x) + 0.3 * Math.abs(m.box.y + m.box.h / 2 - pt.y);
+                best = rivals.reduce((a, b) => (dist(b) < dist(a) ? b : a));
+              }
+            } catch {
+              /* sin desempate: se queda el de mayor puntaje */
+            }
+          }
+          if (action.action === 'type_text') {
+            const field = findFieldNearLabel(screenshot, best.box);
+            if (field) return { x: field.x, y: field.y, via: `ocr("${best.text}")+campo`, costUsd };
+          } else {
+            return {
+              x: Math.round(best.box.x + best.box.w / 2),
+              y: Math.round(best.box.y + best.box.h / 2),
+              via: `ocr("${best.text}")`,
+              costUsd,
+            };
+          }
+        }
+      } catch (e) {
+        safeLogger.warn(`[Agent] OCR falló para "${wanted}": ${e instanceof Error ? e.message : e}`);
+      }
+    }
+
+    // 2) Localizador de visión.
     if (action.objetivo && action.objetivo.trim().length > 0) {
       try {
-        const g = await groundTarget(router, screenshot, action.objetivo.trim(), client.width, client.height, {
+        const desc = action.texto ? `${action.objetivo.trim()} (texto visible: "${action.texto}")` : action.objetivo.trim();
+        const g = await groundTarget(router, screenshot, desc, client.width, client.height, {
           abortSignal: signal,
           zoom: groundZoom,
         });
@@ -151,7 +200,7 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
     return {
       x: null,
       costUsd,
-      reason: action.objetivo ? `no se encontró "${action.objetivo}" en pantalla` : 'la acción no indicó objetivo',
+      reason: action.objetivo || wanted ? `no se encontró "${wanted ?? action.objetivo}" en pantalla` : 'la acción no indicó objetivo',
     };
   }
 
@@ -174,7 +223,7 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         const text = action.text ?? '';
         let note = '';
         let costUsd = 0;
-        if (action.objetivo || (typeof action.x === 'number' && typeof action.y === 'number')) {
+        if (action.objetivo || action.texto || (typeof action.x === 'number' && typeof action.y === 'number')) {
           const p = await resolvePoint(action, screenshot);
           costUsd += p.costUsd;
           // Nunca escribir a ciegas si el campo pedido no se encontró.
@@ -200,7 +249,7 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         let x = Math.round(client.width / 2);
         let y = Math.round(client.height / 2);
         let costUsd = 0;
-        if (action.objetivo || (typeof action.x === 'number' && typeof action.y === 'number')) {
+        if (action.objetivo || action.texto || (typeof action.x === 'number' && typeof action.y === 'number')) {
           const p = await resolvePoint(action, screenshot);
           costUsd += p.costUsd;
           if (p.x !== null) {
@@ -260,6 +309,9 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
           /* depuración opcional */
         }
       }
+
+      // El OCR de esta captura corre en paralelo mientras el planificador piensa (queda en caché).
+      void ocrScreenshot(screenshot).catch(() => []);
 
       let loopWarning: string | undefined;
       if (consecutiveNoChange >= 2) {
