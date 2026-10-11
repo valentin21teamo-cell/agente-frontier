@@ -182,6 +182,16 @@ export function parseKeyCombo(combo: string): { ctrl: boolean; alt: boolean; shi
     }
   }
 
+  // Alias comunes que puede usar el modelo (inglés/español).
+  const ALIASES: Record<string, string> = {
+    esc: 'escape', escape: 'escape', intro: 'enter', return: 'enter',
+    arrowdown: 'down', arrowup: 'up', arrowleft: 'left', arrowright: 'right',
+    abajo: 'down', arriba: 'up', izquierda: 'left', derecha: 'right',
+    pagedown: 'page_down', pageup: 'page_up', pgdn: 'page_down', pgup: 'page_up',
+    del: 'delete', supr: 'delete', suprimir: 'delete', retroceso: 'backspace', inicio: 'home', fin: 'end', tabulador: 'tab',
+  };
+  if (ALIASES[mainKey.toLowerCase()]) mainKey = ALIASES[mainKey.toLowerCase()];
+
   // Case-insensitive lookup in SPECIAL_KEYSYMS
   const lowerMain = mainKey.toLowerCase();
   for (const [k, v] of Object.entries(SPECIAL_KEYSYMS)) {

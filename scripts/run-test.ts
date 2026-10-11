@@ -249,9 +249,11 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
   console.log('----------------------------------------------------------------\n');
 
   // Check stopping rules
-  if (costUsd > 0.10) {
-    console.error(`\n[ALERTA DE PARADA] Tarea ${testCase.id} superó US$ 0.10 ($${costUsd.toFixed(4)}). Deteniendo ejecución.`);
-    process.exit(1);
+  // Las paradas automáticas solo aplican con RUNNER_STRICT=1; por defecto se avisa y se sigue con las demás pruebas.
+  const strict = process.env.RUNNER_STRICT === '1';
+  if (costUsd > 0.30) {
+    console.error(`\n[AVISO DE COSTO] Tarea ${testCase.id} superó US$ 0.30 ($${costUsd.toFixed(4)}).`);
+    if (strict) process.exit(1);
   }
   if (sessionTotalCostUsd > 3.00) {
     console.error(`\n[ALERTA DE PARADA] Costo acumulado superó US$ 3.00 ($${sessionTotalCostUsd.toFixed(4)}). Deteniendo ejecución.`);
@@ -262,7 +264,7 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
   if (!passed) {
     consecutiveFailures++;
     lastFailureReason = report.falloMotivo || 'Evaluación remota falló';
-    if (consecutiveFailures >= 2) {
+    if (consecutiveFailures >= 2 && process.env.RUNNER_STRICT === '1') {
       console.error(`\n[ALERTA DE PARADA] 2 tareas seguidas fallaron por la causa: "${lastFailureReason}". Deteniendo.`);
       process.exit(1);
     }

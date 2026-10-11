@@ -1,15 +1,12 @@
 /**
- * OpenRouter AI Client for Autonomous VNC Navigation
- * Supports:
- * - Multimodal input (base64 PNG screenshots + text)
- * - Model tiering: Gemini 2.5 Flash for fast steps, Claude 3.5 Sonnet / GPT-4o for critical checks
- * - Strict structured actions (click, double_click, type_text, press_key, key_combo, scroll, wait, finish, fail)
- * - Exponential backoff retry on 429 / 5xx
- * - Exact USD cost tracking per task and cost capping
- * - Zero leakage of OPENROUTER_API_KEY
+ * Cliente de OpenRouter para el agente.
+ * - Planificador (MODEL_ID): mira la pantalla y devuelve un lote de acciones que nombran su OBJETIVO.
+ * - Localizador (GROUNDING_MODEL_ID): devuelve la caja del objetivo (ver grounder.ts).
+ * - Reintentos con espera exponencial ante 429/5xx, costo por llamada y la clave nunca en logs.
  */
 
 import { safeLogger } from '../security/sanitize.js';
+import { VisionJsonCaller } from './grounder.js';
 
 export type AgentActionType =
   | 'click'
@@ -25,6 +22,7 @@ export type AgentActionType =
 
 export interface AgentAction {
   action: AgentActionType;
+  objetivo?: string;
   x?: number;
   y?: number;
   text?: string;
@@ -40,13 +38,95 @@ export interface AgentAction {
   pensamiento?: string;
 }
 
-export interface ModelStepResult {
-  action: AgentAction;
+export interface PlannerPlan {
+  pensamiento?: string;
+  acciones: AgentAction[];
+}
+
+export interface PlannerStepResult {
+  plan: PlannerPlan;
   costUsd: number;
   rawResponse?: string;
 }
 
-export class OpenRouterClient {
+/** Extrae JSON de una respuesta que puede venir con ```json ... ``` o texto alrededor. */
+export function parseLooseJson(content: string): unknown {
+  let clean = content.trim();
+  if (clean.startsWith('```')) {
+    clean = clean.replace(/^```(json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  }
+  try {
+    return JSON.parse(clean);
+  } catch {
+    const obj = clean.match(/\{[\s\S]*\}/);
+    if (obj) {
+      try {
+        return JSON.parse(obj[0]);
+      } catch {
+        /* sigue */
+      }
+    }
+    const arr = clean.match(/\[[\s\S]*\]/);
+    if (arr) return JSON.parse(arr[0]);
+    throw new Error(`No se pudo parsear JSON de la respuesta: ${clean.substring(0, 100)}`);
+  }
+}
+
+/** Normaliza la respuesta del planificador: lote {acciones:[...]}, acción suelta {action} o lista. */
+export function parsePlan(content: string): PlannerPlan {
+  const parsed = parseLooseJson(content);
+  let pensamiento: string | undefined;
+  let list: unknown[] = [];
+
+  if (Array.isArray(parsed)) {
+    list = parsed;
+  } else if (parsed && typeof parsed === 'object') {
+    const obj = parsed as Record<string, unknown>;
+    pensamiento = typeof obj.pensamiento === 'string' ? obj.pensamiento : undefined;
+    if (Array.isArray(obj.acciones)) list = obj.acciones;
+    else if (Array.isArray(obj.actions)) list = obj.actions;
+    else if (typeof obj.action === 'string') list = [obj];
+  }
+
+  const acciones = list
+    .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object' && typeof (a as any).action === 'string')
+    .map((a) => ({ ...a, action: String(a.action).toLowerCase().trim() }) as AgentAction);
+
+  if (acciones.length === 0) {
+    throw new Error('La respuesta del modelo no contiene acciones válidas');
+  }
+  return { pensamiento: pensamiento ?? acciones[0].pensamiento, acciones };
+}
+
+const ACTION_FORMATS = [
+  'Devuelve EXACTAMENTE un objeto JSON con esta forma:',
+  '{"pensamiento": "<qué ves y qué harás>", "acciones": [<de 1 a 6 acciones>]}',
+  '',
+  'Acciones disponibles. En "objetivo" describe QUÉ elemento: su texto visible exacto, el tipo y la zona.',
+  'El sistema localiza el objetivo con precisión: NO necesitas calcular coordenadas.',
+  '- {"action":"click","objetivo":"botón \'<texto>\' del diálogo <título>"}',
+  '- {"action":"double_click","objetivo":"fila de <dato visible> en la tabla <nombre>"}',
+  '- {"action":"move","objetivo":"opción \'<texto>\' del menú <nombre>"}   (pasa el ratón para abrir submenús)',
+  '- {"action":"type_text","objetivo":"campo \'<etiqueta>\' del formulario <nombre>","text":"<texto>","clear_first":true}   (hace clic en el campo, lo limpia y escribe)',
+  '- {"action":"type_text","text":"<texto>"}   (escribe en el campo que ya tiene el foco)',
+  '- {"action":"press_key","key":"Enter"}   (también Tab, Escape, Down, Up, Page_Down)',
+  '- {"action":"key_combo","combo":"ctrl+f"}',
+  '- {"action":"scroll","objetivo":"<zona o tabla>","direction":"down","amount":3}',
+  '- {"action":"wait","ms":1000}',
+  '- {"action":"finish","resultado":"<solo el dato pedido, si la tarea pedía un dato>","resumen":"<qué hiciste y qué verificaste en pantalla>"}',
+  '- {"action":"fail","razon":"<motivo exacto>; claves: <identificadores que causan el problema>"}',
+  'Opcional: "x" y "y" en píxeles aproximados como pista; el sistema usa primero el objetivo.',
+  '',
+  'Reglas del lote:',
+  '- Agrupa acciones cuando sepas lo que habrá en pantalla (por ejemplo, llenar varios campos de un formulario visible). Máximo 6.',
+  '- Si una acción abre un menú, diálogo o pantalla cuyo contenido aún no ves, termina el lote ahí.',
+  '- "finish" y "fail" van SOLOS en el lote y solo después de verificar en la captura actual.',
+  '- Si un objetivo no se encuentra, el sistema detiene el lote y te lo informa en el historial.',
+  '',
+  'Responde ÚNICAMENTE el objeto JSON.',
+].join('\n');
+
+export class OpenRouterClient implements VisionJsonCaller {
   private get apiKey(): string {
     const key = process.env.OPENROUTER_API_KEY;
     if (!key || key.trim().length === 0) {
@@ -55,87 +135,36 @@ export class OpenRouterClient {
     return key.trim();
   }
 
-  /**
-   * Selects model:
-   * 'fast': google/gemini-2.5-flash (fast, economical for navigation)
-   * 'precise': anthropic/claude-3.5-sonnet (highest precision for complex OCR and verification)
-   */
   public get modelId(): string {
-    const id = process.env.MODEL_ID || 'google/gemini-2.5-flash';
-    return id.trim();
+    return (process.env.MODEL_ID || 'google/gemini-2.5-flash').trim();
   }
 
-  /**
-   * Sends prompt + screenshot to OpenRouter and receives a structured AgentAction.
-   */
-  public async decideAction(params: {
-    systemPrompt: string;
-    taskInstruction: string;
-    screenshotPng: Buffer;
-    actionHistory: string[];
-    loopWarning?: string;
-    resolution: { width: number; height: number };
+  /** Llamada genérica con imagen que devuelve el texto y su costo. Reintenta ante 429/5xx y errores de red. */
+  private async callVision(params: {
+    model: string;
+    systemPrompt?: string;
+    text: string;
+    imagePng: Buffer;
+    maxTokens?: number;
     abortSignal?: AbortSignal;
-  }): Promise<ModelStepResult> {
-    const model = this.modelId;
-    const base64Image = params.screenshotPng.toString('base64');
-    const imageUrl = `data:image/png;base64,${base64Image}`;
-
-    const userPromptText = [
-      `Resolución de pantalla: ${params.resolution.width}x${params.resolution.height} píxeles.`,
-      `OBJETIVO DE LA TAREA: "${params.taskInstruction}"`,
-      '',
-      'HISTORIAL DE ACCIONES PREVIAS:',
-      params.actionHistory.length > 0
-        ? params.actionHistory.map((a, i) => `${i + 1}. ${a}`).join('\n')
-        : 'Ninguna (este es el primer paso).',
-      params.loopWarning ? `\nALERTA: ${params.loopWarning}` : '',
-      '',
-      'Observa detenidamente la captura de pantalla adjunta.',
-      'Devuelve EXACTAMENTE un objeto JSON válido con la siguiente acción a realizar en el escritorio.',
-      'Formatos permitidos:',
-      '1. {"action": "click", "x": 350, "y": 120, "pensamiento": "Hacer clic en el menú Clientes"}',
-      '2. {"action": "double_click", "x": 200, "y": 300, "pensamiento": "Abrir registro"}',
-      '3. {"action": "type_text", "text": "Papelería Los Andes", "clear_first": true, "pensamiento": "Escribir nombre"}',
-      '4. {"action": "press_key", "key": "Enter", "pensamiento": "Confirmar formulario"}',
-      '5. {"action": "key_combo", "combo": "ctrl+a", "pensamiento": "Seleccionar todo"}',
-      '6. {"action": "scroll", "direction": "down", "amount": 3, "pensamiento": "Bajar para ver más facturas"}',
-      '7. {"action": "wait", "ms": 1000, "pensamiento": "Esperar carga de tabla"}',
-      '8. {"action": "finish", "resultado": "<valor leído en pantalla, solo si la tarea pedía un dato>", "resumen": "<qué se hizo y qué se verificó>", "pensamiento": "Tarea cumplida y verificada en pantalla"}',
-      '9. {"action": "fail", "razon": "<motivo exacto>; claves: <clave1>, <clave2>", "pensamiento": "Caso imposible o ambiguo detectado"}',
-      '10. {"action": "move", "x": 350, "y": 120, "pensamiento": "Pasar el mouse sobre el menú para abrir su submenú"}',
-      '',
-      'IMPORTANTE: Responde ÚNICAMENTE el bloque JSON, sin texto explicativo adicional fuera del JSON.'
-    ].join('\n');
-
-    const messages = [
-      {
-        role: 'system',
-        content: params.systemPrompt,
-      },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: userPromptText },
-          {
-            type: 'image_url',
-            image_url: {
-              url: imageUrl,
-            },
-          },
-        ],
-      },
-    ];
+  }): Promise<{ content: string; costUsd: number }> {
+    const imageUrl = `data:image/png;base64,${params.imagePng.toString('base64')}`;
+    const messages: unknown[] = [];
+    if (params.systemPrompt) messages.push({ role: 'system', content: params.systemPrompt });
+    messages.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: params.text },
+        { type: 'image_url', image_url: { url: imageUrl } },
+      ],
+    });
 
     let attempts = 0;
     const maxAttempts = 3;
     let lastError: Error | null = null;
 
     while (attempts < maxAttempts) {
-      if (params.abortSignal?.aborted) {
-        throw new Error('Operación abortada por señal de tarea');
-      }
-
+      if (params.abortSignal?.aborted) throw new Error('Operación abortada por señal de tarea');
       attempts++;
       try {
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -147,11 +176,11 @@ export class OpenRouterClient {
             'X-Title': 'VNC Autonomous Agent',
           },
           body: JSON.stringify({
-            model,
+            model: params.model,
             messages,
             temperature: 0.1,
             // Los modelos con razonamiento gastan parte de este tope pensando: si es bajo, el JSON sale cortado.
-            max_tokens: 4096,
+            max_tokens: params.maxTokens ?? 4096,
             reasoning: { effort: 'low' },
             response_format: { type: 'json_object' },
           }),
@@ -164,65 +193,94 @@ export class OpenRouterClient {
           await new Promise((r) => setTimeout(r, waitTime));
           continue;
         }
-
         if (!response.ok) {
           const errBody = await response.text();
-          throw new Error(`OpenRouter HTTP ${response.status}: ${errBody}`);
+          throw new Error(`OpenRouter HTTP ${response.status}: ${errBody.substring(0, 300)}`);
         }
 
         const data = await response.json();
         const content = data.choices?.[0]?.message?.content;
-        if (!content) {
-          throw new Error('Respuesta vacía recibida del modelo OpenRouter');
-        }
+        if (!content) throw new Error('Respuesta vacía recibida del modelo OpenRouter');
 
-        const parsedAction = this.parseActionJson(content);
-
-        // Calculate cost
         let costUsd = 0;
         if (data.usage?.cost) {
           costUsd = Number(data.usage.cost);
         } else if (data.usage?.prompt_tokens && data.usage?.completion_tokens) {
-          // Fallback estimate for Gemini Flash
-          costUsd = (data.usage.prompt_tokens * 0.075 + data.usage.completion_tokens * 0.3) / 1000000;
+          costUsd = (data.usage.prompt_tokens * 0.3 + data.usage.completion_tokens * 2.5) / 1000000;
         }
-
-        return {
-          action: parsedAction,
-          costUsd,
-          rawResponse: content,
-        };
+        return { content, costUsd };
       } catch (err: unknown) {
         lastError = err instanceof Error ? err : new Error(String(err));
+        if (params.abortSignal?.aborted) throw lastError;
         if (attempts >= maxAttempts) break;
-        const waitTime = Math.pow(2, attempts) * 1000;
-        await new Promise((r) => setTimeout(r, waitTime));
+        await new Promise((r) => setTimeout(r, Math.pow(2, attempts) * 1000));
       }
     }
-
     throw lastError || new Error('Fallo al llamar a OpenRouter tras 3 intentos');
   }
 
-  private parseActionJson(content: string): AgentAction {
-    // Extract JSON if wrapped in markdown code blocks
-    let clean = content.trim();
-    if (clean.startsWith('```')) {
-      clean = clean.replace(/^```(json)?\n?/, '').replace(/\n?```$/, '').trim();
-    }
-
+  /** Usado por el localizador: devuelve el JSON ya parseado. */
+  public async callVisionJson(params: {
+    model: string;
+    text: string;
+    imagePng: Buffer;
+    maxTokens?: number;
+    abortSignal?: AbortSignal;
+  }): Promise<{ json: unknown; costUsd: number }> {
+    const { content, costUsd } = await this.callVision({ ...params, maxTokens: params.maxTokens ?? 2048 });
+    let json: unknown = null;
     try {
-      const parsed = JSON.parse(clean);
-      if (!parsed || typeof parsed !== 'object' || !parsed.action) {
-        throw new Error('El JSON no contiene el campo obligatorio "action"');
-      }
-      return parsed as AgentAction;
+      json = parseLooseJson(content);
     } catch {
-      // Attempt regex extraction
-      const match = clean.match(/\{[\s\S]*\}/);
-      if (match) {
-        return JSON.parse(match[0]) as AgentAction;
-      }
-      throw new Error(`No se pudo parsear acción JSON de la respuesta: ${clean.substring(0, 100)}`);
+      json = null;
     }
+    return { json, costUsd };
+  }
+
+  /** Planificador: decide el siguiente lote de acciones. */
+  public async decideAction(params: {
+    systemPrompt: string;
+    taskInstruction: string;
+    screenshotPng: Buffer;
+    actionHistory: string[];
+    loopWarning?: string;
+    resolution: { width: number; height: number };
+    remainingSeconds?: number;
+    abortSignal?: AbortSignal;
+  }): Promise<PlannerStepResult> {
+    const history = params.actionHistory.slice(-30);
+    const text = [
+      `Resolución de pantalla: ${params.resolution.width}x${params.resolution.height} píxeles.`,
+      `OBJETIVO DE LA TAREA: "${params.taskInstruction}"`,
+      params.remainingSeconds !== undefined ? `Tiempo restante aproximado: ${params.remainingSeconds} s.` : '',
+      '',
+      'HISTORIAL DE ACCIONES PREVIAS (con su efecto en pantalla):',
+      history.length > 0 ? history.map((a, i) => `${i + 1}. ${a}`).join('\n') : 'Ninguna (este es el primer paso).',
+      params.loopWarning ? `\nALERTA: ${params.loopWarning}` : '',
+      '',
+      'Observa detenidamente la captura de pantalla adjunta (estado ACTUAL).',
+      ACTION_FORMATS,
+    ].join('\n');
+
+    let lastErr: Error | null = null;
+    let totalCost = 0;
+    // Hasta 2 intentos si el JSON no se puede interpretar.
+    for (let i = 0; i < 2; i++) {
+      const { content, costUsd } = await this.callVision({
+        model: this.modelId,
+        systemPrompt: params.systemPrompt,
+        text,
+        imagePng: params.screenshotPng,
+        abortSignal: params.abortSignal,
+      });
+      totalCost += costUsd;
+      try {
+        return { plan: parsePlan(content), costUsd: totalCost, rawResponse: content };
+      } catch (e) {
+        lastErr = e instanceof Error ? e : new Error(String(e));
+        safeLogger.warn(`[OpenRouter] Respuesta del planificador no interpretable (intento ${i + 1}/2)`);
+      }
+    }
+    throw lastErr || new Error('El planificador no devolvió acciones válidas');
   }
 }

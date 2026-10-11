@@ -1,0 +1,93 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { PNG } from 'pngjs';
+import { parseBox, groundTarget, VisionJsonCaller } from '../src/agent/grounder.js';
+import { cropAndScale, zoomRect, pngSize } from '../src/agent/imageOps.js';
+import { parsePlan } from '../src/agent/openrouter.js';
+import { parseKeyCombo, SPECIAL_KEYSYMS } from '../src/rfb/keys.js';
+
+function blankPng(w: number, h: number): Buffer {
+  const p = new PNG({ width: w, height: h });
+  p.data.fill(200);
+  return PNG.sync.write(p);
+}
+
+test('parseBox - box_2d normalizado [ymin,xmin,ymax,xmax] a píxeles', () => {
+  // Botón "Entendido" medido en [760,450]-[911,511] sobre 1280x800.
+  const b = parseBox({ box_2d: [562.5, 593.75, 638.75, 711.72] }, 1280, 800)!;
+  assert.ok(Math.abs(b.x - 760) < 1 && Math.abs(b.y - 450) < 1);
+  assert.ok(Math.abs(b.x + b.w - 911) < 1 && Math.abs(b.y + b.h - 511) < 1);
+});
+
+test('parseBox - listas, point [y,x], píxeles y null', () => {
+  assert.ok(parseBox([{ box_2d: [100, 100, 200, 200], label: 'x' }], 1000, 1000));
+  const p = parseBox({ point: [500, 250] }, 1000, 1000)!;
+  assert.ok(Math.abs(p.x + p.w / 2 - 250) < 1 && Math.abs(p.y + p.h / 2 - 500) < 1);
+  const px = parseBox({ box_2d: [450, 760, 511, 1100] }, 1280, 800)!; // >1000 => píxeles
+  assert.equal(Math.round(px.x), 760);
+  assert.equal(parseBox({ box_2d: null }, 1280, 800), null);
+  assert.equal(parseBox('nada', 1280, 800), null);
+});
+
+test('imageOps - zoomRect no se sale de la pantalla y cropAndScale amplía', () => {
+  const r = zoomRect(1270, 790, 40, 20, 1280, 800);
+  assert.ok(r.x + r.w <= 1280 && r.y + r.h <= 800 && r.x >= 0 && r.y >= 0);
+  const { png, rect } = cropAndScale(blankPng(1280, 800), { x: 100, y: 50, w: 360, h: 220 }, 2);
+  assert.deepEqual(pngSize(png), { width: 720, height: 440 });
+  assert.deepEqual(rect, { x: 100, y: 50, w: 360, h: 220 });
+});
+
+test('groundTarget - dos pasadas: el zoom refina y se mapea a coordenadas de pantalla', async () => {
+  const calls: string[] = [];
+  const llm: VisionJsonCaller = {
+    async callVisionJson({ text }) {
+      calls.push(text.includes('zoomed') ? 'zoom' : 'full');
+      if (!text.includes('zoomed')) {
+        // Primera pasada algo desviada: centro en (800, 480)
+        return { json: { box_2d: [562.5, 593.75, 637.5, 656.25] }, costUsd: 0.001 };
+      }
+      // Segunda pasada: el elemento está al 35% del ancho del recorte (refina hacia la izquierda)
+      return { json: { box_2d: [450, 300, 550, 400] }, costUsd: 0.001 };
+    },
+  };
+  const out = await groundTarget(llm, blankPng(1280, 800), "botón 'Entendido'", 1280, 800);
+  assert.deepEqual(calls, ['full', 'zoom']);
+  assert.equal(out.via, 'zoom');
+  assert.ok(out.point);
+  // Recorte de 360x240 centrado en (800,480): x0=620 -> 620 + 0.35*360 = 746; y0=360 -> 360 + 0.5*240 = 480.
+  assert.ok(Math.abs(out.point!.x - 746) < 2, `x=${out.point!.x}`);
+  assert.ok(Math.abs(out.point!.y - 480) < 3, `y=${out.point!.y}`);
+  assert.ok(Math.abs(out.costUsd - 0.002) < 1e-9);
+});
+
+test('groundTarget - si el zoom devuelve todo el recorte, usa la primera pasada; si no lo ve, null', async () => {
+  const llm: VisionJsonCaller = {
+    async callVisionJson({ text }) {
+      if (!text.includes('zoomed')) return { json: { box_2d: [100, 100, 150, 200] }, costUsd: 0 };
+      return { json: { box_2d: [0, 0, 1000, 1000] }, costUsd: 0 };
+    },
+  };
+  const out = await groundTarget(llm, blankPng(1280, 800), 'algo', 1280, 800);
+  assert.equal(out.via, 'full');
+  const none: VisionJsonCaller = { async callVisionJson() { return { json: { box_2d: null }, costUsd: 0 }; } };
+  const out2 = await groundTarget(none, blankPng(1280, 800), 'nada', 1280, 800);
+  assert.equal(out2.point, null);
+});
+
+test('parsePlan - lote, acción suelta, lista y texto con ```json', () => {
+  const a = parsePlan('{"pensamiento":"p","acciones":[{"action":"click","objetivo":"Guardar"},{"action":"press_key","key":"Enter"}]}');
+  assert.equal(a.acciones.length, 2);
+  assert.equal(a.pensamiento, 'p');
+  const b = parsePlan('```json\n{"action":"FINISH","resultado":"45"}\n```');
+  assert.equal(b.acciones[0].action, 'finish');
+  const c = parsePlan('[{"action":"wait","ms":500}]');
+  assert.equal(c.acciones[0].action, 'wait');
+  assert.throws(() => parsePlan('{"hola":1}'));
+});
+
+test('Teclas - alias comunes del modelo', () => {
+  assert.equal(parseKeyCombo('esc').keysym, SPECIAL_KEYSYMS.Escape);
+  assert.equal(parseKeyCombo('ArrowDown').keysym, SPECIAL_KEYSYMS.Down);
+  assert.equal(parseKeyCombo('pagedown').keysym, SPECIAL_KEYSYMS.Page_Down);
+  assert.equal(parseKeyCombo('Enter').keysym, SPECIAL_KEYSYMS.Enter);
+});
