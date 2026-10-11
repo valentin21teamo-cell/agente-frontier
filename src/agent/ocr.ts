@@ -3,8 +3,9 @@
  *
  * El modelo de visión acierta QUÉ elemento es, pero sus coordenadas fallan decenas o cientos de píxeles.
  * El OCR devuelve la caja de cada palabra en píxeles reales de la captura, sin IA de por medio.
- * Se corren dos variantes en paralelo (una por CPU) y se combinan:
- *   A) gris x2 (texto oscuro sobre fondo claro: menús, etiquetas, tablas)
+ * Se corren tres variantes en paralelo y se combinan:
+ *   A) gris x2, por bloques (párrafos, etiquetas, tablas)
+ *   B) gris x2, texto disperso (barras de menú y etiquetas sueltas)
  *   C) texto claro binarizado x2 (texto blanco sobre botones de color o cabeceras)
  */
 
@@ -128,10 +129,11 @@ export async function ocrScreenshot(pngBuf: Buffer): Promise<OcrWord[]> {
 async function runOcr(pngBuf: Buffer, lang: string): Promise<OcrWord[]> {
   const variants: Array<{ id: string; scale: number; mode: 'gray' | 'light'; psm: string }> = [
     { id: 'A', scale: 2, mode: 'gray', psm: '6' },
+    { id: 'B', scale: 2, mode: 'gray', psm: '11' },
     { id: 'C', scale: 2, mode: 'light', psm: '6' },
   ];
   const tmp = os.tmpdir();
-  // Dos variantes (una por CPU): gris para texto oscuro y binarizada para texto claro sobre color.
+  // Gris (bloques y texto disperso: menús) y binarizada para texto claro sobre botones de color.
   const gray2 = preprocess(pngBuf, 2, 'gray');
   await new Promise((r) => setImmediate(r)); // deja respirar al servidor HTTP entre pasos pesados
   const light2 = preprocess(pngBuf, 2, 'light');
