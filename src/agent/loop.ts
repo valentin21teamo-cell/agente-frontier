@@ -12,6 +12,7 @@ import { OpenRouterClient, AgentAction } from './openrouter.js';
 import { safeLogger } from '../security/sanitize.js';
 import { createGridImage } from './grid.js';
 import { snapToNearestElement } from './locator.js';
+import { applyLadder, TriedPoint } from './clickLadder.js';
 
 const SYSTEM_PROMPT = `Eres un agente autónomo senior especialista en operar software de gestión empresarial y escritorios remotos mediante VNC.
 Tu objetivo es cumplir la tarea solicitada de forma 100% precisa, rápida y verificable.
@@ -68,6 +69,7 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
   const isDebugShots = Boolean(task.debug || process.env.DEBUG_SHOTS === '1');
   let previousScreenshot: Buffer | null = null;
   let consecutiveNoChangeCount = 0;
+  const triedClicks: TriedPoint[] = [];
 
   safeLogger.info(`[Agent] Iniciando tarea ${task.id}: "${task.tarea}"`, task.desktop.password);
 
@@ -134,15 +136,16 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         safeLogger.warn(`[Agent] La pantalla no cambió tras la última acción (intento consecutivo sin cambio: ${consecutiveNoChangeCount})`);
       } else {
         consecutiveNoChangeCount = 0;
+        triedClicks.length = 0;
       }
       previousScreenshot = screenshot;
 
-      if (consecutiveNoChangeCount >= 4) {
-        safeLogger.warn(`[Agent] Tarea ${task.id} finalizada como fallida: 4 acciones consecutivas sin cambio en pantalla.`);
+      if (consecutiveNoChangeCount >= 8) {
+        safeLogger.warn(`[Agent] Tarea ${task.id} finalizada como fallida: 8 acciones consecutivas sin cambio en pantalla.`);
         globalTaskStore.finalizeTask(
           task.id,
           'fallida',
-          'La interfaz no respondió tras 4 intentos consecutivos sin cambio visual en pantalla.'
+          'La interfaz no respondió tras 8 intentos consecutivos sin cambio visual en pantalla.'
         );
         break;
       }
@@ -232,6 +235,16 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
           safeLogger.info(`[Agent] Centrado de clic: de (${targetX}, ${targetY}) a centro de elemento (${snapped.x}, ${snapped.y})`);
           targetX = snapped.x;
           targetY = snapped.y;
+        }
+        if (consecutiveNoChangeCount >= 1 || triedClicks.length > 0) {
+          const ladder = applyLadder(triedClicks, targetX, targetY, client.width, client.height);
+          if (ladder.shifted) {
+            safeLogger.info(`[Agent] Clic repetido sin efecto: desplazado de (${targetX}, ${targetY}) a (${ladder.x}, ${ladder.y})`);
+          }
+          targetX = ladder.x;
+          targetY = ladder.y;
+        } else {
+          triedClicks.push({ x: targetX, y: targetY, n: 1 });
         }
         await client.mouseClick(targetX, targetY);
       } else if (action.action === 'move' && action.x !== undefined && action.y !== undefined) {
