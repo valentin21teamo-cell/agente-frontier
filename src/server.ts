@@ -177,8 +177,9 @@ app.get('/', (_req: Request, res: Response) => {
 // Error handling middleware to prevent stack trace leaks
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const msg = err instanceof Error ? err.message : 'Error interno';
+  const status = (err as { type?: string })?.type === 'entity.parse.failed' ? 400 : 500;
   safeLogger.error(`[UnhandledError] ${msg}`);
-  res.status(500).json({ error: sanitize(msg) });
+  res.status(status).json({ error: sanitize(msg) });
 });
 
 // Start server function

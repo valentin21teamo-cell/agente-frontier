@@ -150,7 +150,9 @@ export class OpenRouterClient {
             model,
             messages,
             temperature: 0.1,
-            max_tokens: 600,
+            // Los modelos con razonamiento gastan parte de este tope pensando: si es bajo, el JSON sale cortado.
+            max_tokens: 4096,
+            reasoning: { effort: 'low' },
             response_format: { type: 'json_object' },
           }),
           signal: params.abortSignal,
