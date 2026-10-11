@@ -55,7 +55,10 @@ export async function ocrAvailable(): Promise<string | null> {
   return tesseractLang;
 }
 
-/** Escala de grises ampliada (bilineal). mode "light" binariza el texto claro y lo deja negro sobre blanco. */
+/**
+ * Escala de grises ampliada (bilineal) en formato PGM (sin compresión: escribirlo es casi instantáneo y no
+ * bloquea el servidor). mode "light" binariza el texto claro y lo deja negro sobre blanco.
+ */
 export function preprocess(pngBuf: Buffer, scale: number, mode: 'gray' | 'light'): Buffer {
   const src = PNG.sync.read(pngBuf);
   const W = src.width;
@@ -64,31 +67,29 @@ export function preprocess(pngBuf: Buffer, scale: number, mode: 'gray' | 'light'
   for (let i = 0; i < W * H; i++) {
     lum[i] = 0.299 * src.data[i * 4] + 0.587 * src.data[i * 4 + 1] + 0.114 * src.data[i * 4 + 2];
   }
-  const out = new PNG({ width: W * scale, height: H * scale });
-  for (let y = 0; y < H * scale; y++) {
-    const fy = Math.min(H - 1, (y + 0.5) / scale - 0.5);
-    const y0 = Math.max(0, Math.floor(fy));
+  const OW = W * scale;
+  const OH = H * scale;
+  const header = Buffer.from(`P5\n${OW} ${OH}\n255\n`, 'ascii');
+  const pix = Buffer.alloc(OW * OH);
+  for (let y = 0; y < OH; y++) {
+    const fy = Math.min(H - 1, Math.max(0, (y + 0.5) / scale - 0.5));
+    const y0 = Math.floor(fy);
     const y1 = Math.min(H - 1, y0 + 1);
-    const dy = Math.max(0, fy - y0);
-    for (let x = 0; x < W * scale; x++) {
-      const fx = Math.min(W - 1, (x + 0.5) / scale - 0.5);
-      const x0 = Math.max(0, Math.floor(fx));
+    const dy = fy - y0;
+    for (let x = 0; x < OW; x++) {
+      const fx = Math.min(W - 1, Math.max(0, (x + 0.5) / scale - 0.5));
+      const x0 = Math.floor(fx);
       const x1 = Math.min(W - 1, x0 + 1);
-      const dx = Math.max(0, fx - x0);
+      const dx = fx - x0;
       const v =
         lum[y0 * W + x0] * (1 - dx) * (1 - dy) +
         lum[y0 * W + x1] * dx * (1 - dy) +
         lum[y1 * W + x0] * (1 - dx) * dy +
         lum[y1 * W + x1] * dx * dy;
-      const g = mode === 'light' ? (v > 170 ? 0 : 255) : Math.round(v);
-      const di = (y * W * scale + x) * 4;
-      out.data[di] = g;
-      out.data[di + 1] = g;
-      out.data[di + 2] = g;
-      out.data[di + 3] = 255;
+      pix[y * OW + x] = mode === 'light' ? (v > 170 ? 0 : 255) : Math.round(v);
     }
   }
-  return PNG.sync.write(out);
+  return Buffer.concat([header, pix]);
 }
 
 export function parseTsv(tsv: string, scale: number, variant: string): OcrWord[] {
@@ -110,27 +111,37 @@ export function parseTsv(tsv: string, scale: number, variant: string): OcrWord[]
   return words;
 }
 
-const cache = new Map<string, OcrWord[]>();
+const cache = new Map<string, Promise<OcrWord[]>>();
 
-/** OCR de la captura con las tres variantes (con caché por contenido de la imagen). */
+/** OCR de la captura con las tres variantes. La caché guarda la promesa: dos pedidos de la misma imagen comparten trabajo. */
 export async function ocrScreenshot(pngBuf: Buffer): Promise<OcrWord[]> {
   const lang = await ocrAvailable();
   if (!lang) return [];
   const key = createHash('sha1').update(pngBuf).digest('hex');
   const hit = cache.get(key);
   if (hit) return hit;
+  const job = runOcr(pngBuf, lang);
+  if (cache.size > 20) cache.clear();
+  cache.set(key, job);
+  return job;
+}
 
+async function runOcr(pngBuf: Buffer, lang: string): Promise<OcrWord[]> {
   const variants: Array<{ id: string; scale: number; mode: 'gray' | 'light'; psm: string }> = [
     { id: 'A', scale: 2, mode: 'gray', psm: '6' },
     { id: 'B', scale: 2, mode: 'gray', psm: '11' },
     { id: 'C', scale: 3, mode: 'light', psm: '6' },
   ];
   const tmp = os.tmpdir();
+  // La imagen gris x2 se prepara una sola vez y la usan A y B.
+  const gray2 = preprocess(pngBuf, 2, 'gray');
+  await new Promise((r) => setImmediate(r)); // deja respirar al servidor HTTP entre pasos pesados
+  const light3 = preprocess(pngBuf, 3, 'light');
   const results = await Promise.all(
     variants.map(async (v) => {
-      const file = path.join(tmp, `ocr-${randomUUID()}.png`);
+      const file = path.join(tmp, `ocr-${randomUUID()}.pgm`);
       try {
-        fs.writeFileSync(file, preprocess(pngBuf, v.scale, v.mode));
+        fs.writeFileSync(file, v.mode === 'light' ? light3 : gray2);
         const tsv = await run('tesseract', [file, 'stdout', '-l', lang, '--psm', v.psm, 'tsv'], 15000);
         return parseTsv(tsv, v.scale, v.id);
       } catch {
@@ -140,10 +151,7 @@ export async function ocrScreenshot(pngBuf: Buffer): Promise<OcrWord[]> {
       }
     })
   );
-  const words = results.flat();
-  if (cache.size > 20) cache.clear();
-  cache.set(key, words);
-  return words;
+  return results.flat();
 }
 
 export function normalizeText(s: string): string {
