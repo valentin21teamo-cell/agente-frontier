@@ -3,10 +3,9 @@
  *
  * El modelo de visión acierta QUÉ elemento es, pero sus coordenadas fallan decenas o cientos de píxeles.
  * El OCR devuelve la caja de cada palabra en píxeles reales de la captura, sin IA de por medio.
- * Se corren tres variantes en paralelo y se combinan:
- *   A) gris x2, segmentación por bloques (texto oscuro sobre fondo claro)
- *   B) gris x2, texto disperso (menús, etiquetas sueltas)
- *   C) texto claro binarizado x3 e invertido (texto blanco sobre botones de color o cabeceras)
+ * Se corren dos variantes en paralelo (una por CPU) y se combinan:
+ *   A) gris x2 (texto oscuro sobre fondo claro: menús, etiquetas, tablas)
+ *   C) texto claro binarizado x2 (texto blanco sobre botones de color o cabeceras)
  */
 
 import { execFile } from 'node:child_process';
@@ -129,19 +128,18 @@ export async function ocrScreenshot(pngBuf: Buffer): Promise<OcrWord[]> {
 async function runOcr(pngBuf: Buffer, lang: string): Promise<OcrWord[]> {
   const variants: Array<{ id: string; scale: number; mode: 'gray' | 'light'; psm: string }> = [
     { id: 'A', scale: 2, mode: 'gray', psm: '6' },
-    { id: 'B', scale: 2, mode: 'gray', psm: '11' },
-    { id: 'C', scale: 3, mode: 'light', psm: '6' },
+    { id: 'C', scale: 2, mode: 'light', psm: '6' },
   ];
   const tmp = os.tmpdir();
-  // La imagen gris x2 se prepara una sola vez y la usan A y B.
+  // Dos variantes (una por CPU): gris para texto oscuro y binarizada para texto claro sobre color.
   const gray2 = preprocess(pngBuf, 2, 'gray');
   await new Promise((r) => setImmediate(r)); // deja respirar al servidor HTTP entre pasos pesados
-  const light3 = preprocess(pngBuf, 3, 'light');
+  const light2 = preprocess(pngBuf, 2, 'light');
   const results = await Promise.all(
     variants.map(async (v) => {
       const file = path.join(tmp, `ocr-${randomUUID()}.pgm`);
       try {
-        fs.writeFileSync(file, v.mode === 'light' ? light3 : gray2);
+        fs.writeFileSync(file, v.mode === 'light' ? light2 : gray2);
         const tsv = await run('tesseract', [file, 'stdout', '-l', lang, '--psm', v.psm, 'tsv'], 15000);
         return parseTsv(tsv, v.scale, v.id);
       } catch {

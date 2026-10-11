@@ -220,6 +220,22 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
     if (finalStatus !== 'en_curso') break;
   }
 
+  // Bitácora del agente (pasos, tiempos y cómo localizó cada clic) para diagnóstico.
+  try {
+    const tr = await fetch(`${AGENT_BASE}/tasks/${taskId}/trace`, {
+      headers: { Authorization: `Bearer ${TEAM_TOKEN}` },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (tr.ok) {
+      const { trace } = (await tr.json()) as { trace: string[] };
+      console.log('\n--- BITÁCORA DEL AGENTE ---');
+      for (const l of trace) console.log(l);
+      console.log('--- FIN BITÁCORA ---\n');
+    }
+  } catch {
+    console.log('(No se pudo leer la bitácora del agente)');
+  }
+
   const durationSec = Math.round((Date.now() - startTime) / 1000);
 
   const steps = finalSteps;

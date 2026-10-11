@@ -27,6 +27,8 @@ export interface TaskRecord {
   deadlineTimer?: NodeJS.Timeout;
   debug?: boolean;
   cleanupCallbacks: Array<() => Promise<void> | void>;
+  /** Bitácora de pasos con tiempos (para diagnóstico; se sanitiza al exponerla). */
+  trace?: string[];
 }
 
 export type TaskWorkerRunner = (task: TaskRecord) => Promise<void>;
@@ -318,6 +320,13 @@ export class TaskStore {
     if (!task) return 0;
     task.costUsd += usd;
     return task.costUsd;
+  }
+
+  /** Bitácora sanitizada de una tarea (diagnóstico). */
+  public getTaskTrace(id: string): string[] | null {
+    const task = this.tasks.get(id);
+    if (!task) return null;
+    return (task.trace ?? []).map((l) => sanitize(l, task.desktop.password));
   }
 
   /**

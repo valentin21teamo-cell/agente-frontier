@@ -122,6 +122,12 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
   });
 
   const active = () => !signal.aborted && task.estado === 'en_curso';
+  const t0 = Date.now();
+  task.trace = [];
+  const trace = (line: string) => {
+    const l = `[${((Date.now() - t0) / 1000).toFixed(1)}s] ${line}`;
+    if (task.trace!.length < 400) task.trace!.push(l);
+  };
 
   /** Resuelve el punto de una acción: primero el localizador por objetivo; si no, la pista x,y del planificador. */
   async function resolvePoint(
@@ -134,8 +140,10 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
     const wanted = extractTargetText(action.objetivo, action.texto);
     if (wanted) {
       try {
+        const tO = Date.now();
         const words = await ocrScreenshot(screenshot);
         const matches = findTextMatches(words, wanted);
+        trace(`    OCR ${((Date.now() - tO) / 1000).toFixed(1)}s, ${words.length} palabras; "${wanted}" -> ${matches.length} coincidencia(s)`);
         if (matches.length > 0) {
           let best = matches[0];
           const rivals = matches.filter((m) => m.score >= best.score - 0.1);
@@ -188,11 +196,13 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
     if (action.objetivo && action.objetivo.trim().length > 0) {
       try {
         const desc = action.texto ? `${action.objetivo.trim()} (texto visible: "${action.texto}")` : action.objetivo.trim();
+        const tG = Date.now();
         const g = await groundTarget(router, screenshot, desc, client.width, client.height, {
           abortSignal: signal,
           zoom: groundZoom,
         });
         costUsd += g.costUsd;
+        trace(`    Visión ${((Date.now() - tG) / 1000).toFixed(1)}s -> ${g.point ? `(${g.point.x},${g.point.y}) ${g.via}` : 'no encontrado'}`);
         if (g.point) {
           return { x: g.point.x, y: g.point.y, via: g.via === 'zoom' ? 'localizador+zoom' : 'localizador', costUsd };
         }
@@ -328,6 +338,7 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         loopWarning = `Las últimas ${consecutiveNoChange} rondas NO cambiaron la pantalla. Cambia de estrategia: describe el objetivo de otra forma (texto exacto, zona), usa el teclado (Enter, Tab, Escape) u otra ruta de menú.`;
       }
 
+      const tPlan = Date.now();
       const step = await router.decideAction({
         systemPrompt: SYSTEM_PROMPT,
         taskInstruction: task.tarea,
@@ -342,6 +353,11 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
       if (!active()) break;
 
       const acciones = step.plan.acciones.slice(0, MAX_BATCH);
+      trace(
+        `Paso ${currentStep} planificador ${((Date.now() - tPlan) / 1000).toFixed(1)}s: ${acciones
+          .map((a) => a.action + (a.texto ? `[${a.texto}]` : a.objetivo ? `(${a.objetivo})` : ''))
+          .join(', ')} | ${(step.plan.pensamiento || '').slice(0, 160)}`
+      );
       safeLogger.info(
         `[Agent] Paso ${currentStep}: ${acciones.map((a) => a.action + (a.objetivo ? `("${a.objetivo}")` : '')).join(', ')} - ${step.plan.pensamiento || ''}`,
         task.desktop.password
@@ -359,23 +375,28 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
 
       const first = acciones[0];
       if (first.action === 'finish') {
+        trace(`FIN terminada: ${first.resultado ?? ''} ${first.resumen ?? ''}`);
         globalTaskStore.finalizeTask(task.id, 'terminada', buildFinishSummary(first));
         break;
       }
       if (first.action === 'fail') {
+        trace(`FIN fallida: ${first.razon ?? ''}`);
         globalTaskStore.finalizeTask(task.id, 'fallida', buildFailSummary(first));
         break;
       }
 
       let anyChange = false;
-      for (const action of acciones) {
+      for (const [idx, action] of acciones.entries()) {
         if (!active()) break;
         if (action.action === 'finish' || action.action === 'fail') {
           history.push(`(${action.action} ignorado: debe ir solo y después de verificar la pantalla)`);
           break;
         }
         const before = await client.captureScreenshotPng();
-        const outcome = await executeAction(action, before);
+        const tAct = Date.now();
+        // La 1a acción se localiza sobre la captura que vio el planificador (su OCR ya corrió en paralelo);
+        // las siguientes, sobre una captura nueva porque la acción anterior pudo cambiar la pantalla.
+        const outcome = await executeAction(action, idx === 0 ? screenshot : before);
         globalTaskStore.addCost(task.id, outcome.costUsd);
         if (!active()) break;
         const after = await client.captureScreenshotPng();
@@ -383,6 +404,7 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         if (changed) anyChange = true;
         const line = `${describeAction(action)} ${outcome.note} [${changed ? 'la pantalla cambió' : 'SIN cambio visible'}]`.replace(/\s+/g, ' ');
         history.push(line);
+        trace(`  ${line} (${((Date.now() - tAct) / 1000).toFixed(1)}s)`);
         safeLogger.info(`[Agent]   ${line}`, task.desktop.password);
         if (outcome.stopBatch) break;
         if (task.costUsd >= maxCostUsd) break;

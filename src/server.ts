@@ -153,6 +153,15 @@ app.post('/tasks', requireTeamAuth, (req: Request, res: Response) => {
  * GET /tasks/:task_id
  * Returns current status and sanitized summary.
  */
+app.get('/tasks/:task_id/trace', requireTeamAuth, (req: Request, res: Response) => {
+  const trace = globalTaskStore.getTaskTrace(req.params.task_id);
+  if (!trace) {
+    res.status(404).json({ error: 'Tarea no encontrada' });
+    return;
+  }
+  res.status(200).json({ trace });
+});
+
 app.get('/tasks/:task_id', requireTeamAuth, (req: Request, res: Response) => {
   const { task_id } = req.params;
   const result = globalTaskStore.getTaskPublic(task_id);
