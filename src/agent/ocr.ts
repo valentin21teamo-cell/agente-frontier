@@ -35,7 +35,9 @@ let tesseractLang: string | null | undefined; // undefined = sin comprobar, null
 
 function run(cmd: string, args: string[], timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+    // Un hilo por proceso: con varias tareas a la vez, los hilos de OpenMP saturan la CPU.
+    const env = { ...process.env, OMP_THREAD_LIMIT: '1' };
+    execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, env }, (err, stdout) => {
       if (err) reject(err);
       else resolve(stdout.toString());
     });
@@ -113,6 +115,48 @@ export function parseTsv(tsv: string, scale: number, variant: string): OcrWord[]
 
 const cache = new Map<string, Promise<OcrWord[]>>();
 
+/**
+ * Semáforo global de procesos Tesseract: con muchas tareas simultáneas (el set de evaluación) se evita
+ * agotar CPU y memoria del contenedor, que es lo que tumba el servidor. Si la espera es larga, se omite el OCR.
+ */
+const MAX_PROCS = Math.max(1, Number(process.env.OCR_MAX_PROCS) || 2);
+let activeProcs = 0;
+const waiters: Array<{ go: () => void; done: boolean }> = [];
+function acquireProc(timeoutMs: number): Promise<boolean> {
+  if (activeProcs < MAX_PROCS) {
+    activeProcs++;
+    return Promise.resolve(true);
+  }
+  return new Promise((resolve) => {
+    const w = {
+      done: false,
+      go: () => {
+        if (w.done) return;
+        w.done = true;
+        clearTimeout(timer);
+        activeProcs++;
+        resolve(true);
+      },
+    };
+    const timer = setTimeout(() => {
+      if (w.done) return;
+      w.done = true;
+      resolve(false);
+    }, timeoutMs);
+    waiters.push(w);
+  });
+}
+function releaseProc(): void {
+  activeProcs = Math.max(0, activeProcs - 1);
+  while (waiters.length > 0) {
+    const w = waiters.shift()!;
+    if (!w.done) {
+      w.go();
+      break;
+    }
+  }
+}
+
 /** OCR de la captura con las tres variantes. La caché guarda la promesa: dos pedidos de la misma imagen comparten trabajo. */
 export async function ocrScreenshot(pngBuf: Buffer): Promise<OcrWord[]> {
   const lang = await ocrAvailable();
@@ -121,7 +165,7 @@ export async function ocrScreenshot(pngBuf: Buffer): Promise<OcrWord[]> {
   const hit = cache.get(key);
   if (hit) return hit;
   const job = runOcr(pngBuf, lang);
-  if (cache.size > 20) cache.clear();
+  if (cache.size > 8) cache.clear();
   cache.set(key, job);
   return job;
 }
@@ -140,6 +184,7 @@ async function runOcr(pngBuf: Buffer, lang: string): Promise<OcrWord[]> {
   const results = await Promise.all(
     variants.map(async (v) => {
       const file = path.join(tmp, `ocr-${randomUUID()}.pgm`);
+      if (!(await acquireProc(12000))) return [] as OcrWord[];
       try {
         fs.writeFileSync(file, v.mode === 'light' ? light2 : gray2);
         const tsv = await run('tesseract', [file, 'stdout', '-l', lang, '--psm', v.psm, 'tsv'], 15000);
@@ -147,6 +192,7 @@ async function runOcr(pngBuf: Buffer, lang: string): Promise<OcrWord[]> {
       } catch {
         return [] as OcrWord[];
       } finally {
+        releaseProc();
         fs.rm(file, { force: true }, () => {});
       }
     })
@@ -308,4 +354,48 @@ export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y:
     if (bottom > 0) return { x: sx + 20, y: Math.round((y + bottom) / 2) };
   }
   return null;
+}
+
+/**
+ * Texto de la pantalla en filas (de arriba abajo), para que el planificador lea tablas y copie textos exactos.
+ * Une las variantes del OCR quitando duplicados; separa columnas lejanas con " | ".
+ */
+export function screenTextForPrompt(words: OcrWord[], maxChars = 6000): string {
+  const uniq: OcrWord[] = [];
+  for (const w of [...words].sort((a, b) => b.conf - a.conf)) {
+    const n = normalizeText(w.text);
+    if (!n) continue;
+    const cx = w.box.x + w.box.w / 2;
+    const cy = w.box.y + w.box.h / 2;
+    const dup = uniq.some(
+      (u) =>
+        Math.abs(u.box.x + u.box.w / 2 - cx) < 12 &&
+        Math.abs(u.box.y + u.box.h / 2 - cy) < 6 &&
+        (normalizeText(u.text) === n || Math.abs(u.box.w - w.box.w) < 8)
+    );
+    if (!dup) uniq.push(w);
+  }
+  uniq.sort((a, b) => a.box.y + a.box.h / 2 - (b.box.y + b.box.h / 2));
+  const rows: OcrWord[][] = [];
+  for (const w of uniq) {
+    const cy = w.box.y + w.box.h / 2;
+    const row = rows.find((r) => Math.abs(r[0].box.y + r[0].box.h / 2 - cy) < 6);
+    if (row) row.push(w);
+    else rows.push([w]);
+  }
+  const lines: string[] = [];
+  for (const r of rows) {
+    r.sort((a, b) => a.box.x - b.box.x);
+    let line = '';
+    let prevRight = -1;
+    for (const w of r) {
+      if (prevRight >= 0) line += w.box.x - prevRight > 16 ? ' | ' : ' ';
+      line += w.text;
+      prevRight = w.box.x + w.box.w;
+    }
+    lines.push(`y=${Math.round(r[0].box.y + r[0].box.h / 2)}: ${line}`);
+  }
+  let out = lines.join('\n');
+  if (out.length > maxChars) out = out.slice(0, maxChars) + '\n(...)';
+  return out;
 }

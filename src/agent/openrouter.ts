@@ -248,6 +248,7 @@ export class OpenRouterClient implements VisionJsonCaller {
     loopWarning?: string;
     resolution: { width: number; height: number };
     remainingSeconds?: number;
+    screenText?: string;
     abortSignal?: AbortSignal;
   }): Promise<PlannerStepResult> {
     const history = params.actionHistory.slice(-30);
@@ -260,6 +261,9 @@ export class OpenRouterClient implements VisionJsonCaller {
       history.length > 0 ? history.map((a, i) => `${i + 1}. ${a}`).join('\n') : 'Ninguna (este es el primer paso).',
       params.loopWarning ? `\nALERTA: ${params.loopWarning}` : '',
       '',
+      params.screenText
+        ? `TEXTO DETECTADO EN PANTALLA POR OCR (de arriba abajo; "y" es la altura en píxeles; " | " separa columnas; puede tener errores menores):\n${params.screenText}\n\nCuando un elemento aparezca en esta lista, copia en "texto" EXACTAMENTE esa cadena (así el clic es preciso). Usa esta lista también para leer y contar datos de tablas, verificando con la imagen.`
+        : '',
       'Observa detenidamente la captura de pantalla adjunta (estado ACTUAL).',
       ACTION_FORMATS,
     ].join('\n');

@@ -18,7 +18,7 @@ import { RfbClient } from '../rfb/client.js';
 import { OpenRouterClient, AgentAction } from './openrouter.js';
 import { safeLogger } from '../security/sanitize.js';
 import { groundTarget } from './grounder.js';
-import { ocrScreenshot, findTextMatches, findFieldNearLabel, extractTargetText } from './ocr.js';
+import { ocrScreenshot, findTextMatches, findFieldNearLabel, extractTargetText, screenTextForPrompt, OcrWord } from './ocr.js';
 import { applyLadder, TriedPoint } from './clickLadder.js';
 
 const SYSTEM_PROMPT = `Eres un agente autónomo experto en operar software de gestión empresarial (aplicaciones de escritorio legadas) mediante capturas de pantalla, ratón y teclado.
@@ -32,12 +32,14 @@ REGLAS:
 4. No hagas cambios que la tarea no pida. No edites ni borres otros registros.
 5. Fechas: "hoy" es la fecha que muestra la aplicación (cabecera o barra de estado), no la del sistema. Respeta el formato de fecha de cada campo.
 6. Búsqueda: usa los buscadores o filtros de la aplicación para encontrar registros en vez de recorrer listas largas.
-7. Ambigüedad: si la tarea identifica a alguien solo por nombre y hay varios registros que coinciden (homónimos) sin forma de desempatar con los datos de la tarea, NO elijas: usa "fail" e incluye en la razón los identificadores (cédula, NIT, código) de TODOS los registros que coinciden.
+7. Ambigüedad: antes de modificar un registro buscado por nombre, búscalo y mira cuántos coinciden. Si hay varios (homónimos) y los datos de la tarea no permiten desempatar, NO elijas ni abras ninguno: usa "fail" en ESE MISMO paso e incluye en la razón los identificadores (cédula, NIT, código) de TODOS los que coinciden, copiados de la pantalla.
 8. Tareas imposibles o contradictorias: "fail" con razón exacta y las claves involucradas. Nunca inventes datos.
 9. Consultas: lee el valor EXACTO en pantalla (aplica los filtros que pide la tarea). En "finish", "resultado" lleva solo el dato: el número primero; si son dos datos, sepáralos con ";".
 10. Exportar/reportes: usa la función de exportar o generar reporte de la aplicación con los filtros pedidos y verifica el mensaje de confirmación.
 11. Si una acción no cambió la pantalla, no la repitas igual: describe mejor el objetivo, usa el teclado (Enter, Tab, Escape) u otra ruta.
-12. Antes de "finish", verifica en la captura ACTUAL que el cambio quedó aplicado. Si el tiempo restante es bajo, prioriza verificar y terminar.`;
+12. Antes de "finish", verifica en la captura ACTUAL la evidencia del cambio (mensaje de confirmación, registro en la lista o valor actualizado). Sin evidencia visible no uses "finish": búscala (por ejemplo, abre la lista o busca el registro). Si el tiempo restante es bajo, prioriza verificar y terminar.
+13. Eficiencia: tienes unos 4 minutos y cada paso tarda varios segundos. Ve directo al módulo correcto, agrupa acciones en lotes, no abras pantallas innecesarias y, en consultas, apenas el dato pedido sea visible termina con "finish".
+14. Conteos y consultas: usa los filtros y buscadores de la aplicación (cliente, estado, fechas). Si la aplicación muestra un total, úsalo; si cuentas filas, apóyate en el texto OCR y revisa si hay más páginas o desplazamiento.`;
 
 const MAX_BATCH = 6;
 const MAX_NO_CHANGE_STEPS = 6;
@@ -100,9 +102,9 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
   }
 
   const maxCostUsd = Number(process.env.MAX_COST_USD_PER_TASK) || 1.0;
-  const deadlineMs = Number(process.env.TASK_DEADLINE_MS) > 0 ? Number(process.env.TASK_DEADLINE_MS) : 270000;
+  const deadlineMs = Number(process.env.TASK_DEADLINE_MS) > 0 ? Number(process.env.TASK_DEADLINE_MS) : 285000;
   const deadlineAt = task.createdAt + deadlineMs;
-  const groundZoom = process.env.GROUND_ZOOM !== '0';
+  const groundZoom = process.env.GROUND_ZOOM === '1';
   const router = new OpenRouterClient();
   const history: string[] = [];
   const isDebugShots = Boolean(task.debug || process.env.DEBUG_SHOTS === '1');
@@ -185,6 +187,46 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
               via: `ocr("${best.text}")`,
               costUsd,
             };
+          }
+        } else {
+          // Frase no encontrada completa: se buscan sus palabras largas y la visión (buena en x) elige la más cercana.
+          const partial = wanted
+            .split(/\s+/)
+            .filter((t) => t.replace(/[^\p{L}\p{N}]/gu, '').length >= 4)
+            .flatMap((t) => findTextMatches(words, t));
+          if (partial.length > 0) {
+            let pick = partial.length === 1 ? partial[0] : null;
+            if (action.objetivo) {
+              try {
+                const g = await groundTarget(router, screenshot, `${action.objetivo} (texto visible: "${wanted}")`, client.width, client.height, {
+                  abortSignal: signal,
+                  zoom: false,
+                });
+                costUsd += g.costUsd;
+                if (g.point) {
+                  const pt = g.point;
+                  const dist = (m: (typeof partial)[number]) =>
+                    Math.abs(m.box.x + m.box.w / 2 - pt.x) + 0.3 * Math.abs(m.box.y + m.box.h / 2 - pt.y);
+                  const near = partial.filter((m) => Math.abs(m.box.x + m.box.w / 2 - pt.x) < 220);
+                  if (near.length > 0) pick = near.reduce((a, b) => (dist(b) < dist(a) ? b : a));
+                }
+              } catch {
+                /* sin visión: solo si hay un único candidato */
+              }
+            }
+            if (pick) {
+              trace(`    OCR parcial: "${pick.text}" para "${wanted}"`);
+              if (action.action === 'type_text') {
+                const field = findFieldNearLabel(screenshot, pick.box);
+                if (field) return { x: field.x, y: field.y, via: `ocr-parcial("${pick.text}")+campo`, costUsd };
+              }
+              return {
+                x: Math.round(pick.box.x + pick.box.w / 2),
+                y: Math.round(pick.box.y + pick.box.h / 2),
+                via: `ocr-parcial("${pick.text}")`,
+                costUsd,
+              };
+            }
           }
         }
       } catch (e) {
@@ -330,8 +372,13 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         }
       }
 
-      // El OCR de esta captura corre en paralelo mientras el planificador piensa (queda en caché).
-      void ocrScreenshot(screenshot).catch(() => []);
+      // OCR de la captura (queda en caché para localizar los clics). Su texto va al planificador para que
+      // lea tablas y copie textos exactos; si tarda más de 8 s, el planificador sigue sin él.
+      const tOcr = Date.now();
+      const ocrJob = ocrScreenshot(screenshot).catch(() => [] as OcrWord[]);
+      const ocrWords = await Promise.race([ocrJob, sleep(8000).then(() => null)]);
+      const screenText = ocrWords && ocrWords.length > 0 ? screenTextForPrompt(ocrWords) : undefined;
+      trace(`Paso ${currentStep} OCR para planificador ${((Date.now() - tOcr) / 1000).toFixed(1)}s (${ocrWords ? ocrWords.length : 'sin'} palabras)`);
 
       let loopWarning: string | undefined;
       if (consecutiveNoChange >= 2) {
@@ -346,7 +393,8 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         actionHistory: history,
         loopWarning,
         resolution: { width: client.width, height: client.height },
-        remainingSeconds: Math.round(remainingMs / 1000),
+        remainingSeconds: Math.round((deadlineAt - Date.now()) / 1000),
+        screenText,
         abortSignal: signal,
       });
       globalTaskStore.addCost(task.id, step.costUsd);

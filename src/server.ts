@@ -22,6 +22,14 @@ if (!process.env.COORD_MODE) {
   process.env.COORD_MODE = 'pixels';
 }
 
+// Un error no capturado en una tarea no debe tumbar el servidor (el set de evaluación corre muchas a la vez).
+process.on('uncaughtException', (err) => {
+  safeLogger.error(`[Proceso] Excepción no capturada: ${err instanceof Error ? err.message : String(err)}`);
+});
+process.on('unhandledRejection', (reason) => {
+  safeLogger.error(`[Proceso] Promesa rechazada sin manejar: ${reason instanceof Error ? reason.message : String(reason)}`);
+});
+
 export const app = express();
 app.use(express.json());
 

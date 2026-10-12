@@ -38,6 +38,11 @@ En las pruebas con el escritorio de práctica, pedir coordenadas en píxeles al 
 
 Prueba rápida del localizador contra el escritorio: `npx tsx scripts/ground-test.ts "botón 'Entendido' del diálogo de novedades"`.
 
+## Estabilidad con muchas tareas a la vez
+- El set de evaluación lanza decenas de tareas. El OCR (Tesseract) es lo más pesado: un semáforo global limita los procesos simultáneos (`OCR_MAX_PROCS`, por defecto 2), cada proceso usa un solo hilo y, si la espera supera 12 s, ese paso sigue sin OCR en vez de bloquear.
+- Manejadores globales de errores: un fallo en una tarea no tumba el servidor.
+- Bitácora por tarea con tiempos: `GET /tasks/{id}/trace` (requiere el token). `scripts/load-test.ts` mide que `/health` siga respondiendo con N tareas simultáneas.
+
 ## Limitaciones conocidas
 - La precisión de coordenadas del modelo es el punto débil (medido en la práctica); ver `docs/INCIDENTE.md`.
 - El estado de tareas no sobrevive a reinicios.

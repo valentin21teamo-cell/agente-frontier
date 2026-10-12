@@ -45,7 +45,7 @@ export class TaskStore {
 
   private get maxDeadlineMs(): number {
     const envVal = Number(process.env.TASK_DEADLINE_MS);
-    return !isNaN(envVal) && envVal > 0 ? envVal : 270000; // 4.5 minutes default
+    return !isNaN(envVal) && envVal > 0 ? envVal : 285000; // 4 min 45 s (el evaluador da 5 min)
   }
 
   private get maxSteps(): number {

@@ -90,3 +90,36 @@ test('OCR - findFieldNearLabel con campo que ya tiene texto y borde suave sobre 
   const p = findFieldNearLabel(PNG.sync.write(png), { x: 60, y: 37, w: 70, h: 10 });
   assert.ok(p && p.x > 160 && p.x < 460 && p.y > 30 && p.y < 54, JSON.stringify(p));
 });
+
+test('OCR - screenTextForPrompt arma filas de arriba abajo y separa columnas', async () => {
+  const { screenTextForPrompt } = await import('../src/agent/ocr.js');
+  const words: OcrWord[] = [
+    w('Ayuda', 354, 39, 'B:1'),
+    w('Archivo', 65, 39, 'B:1'),
+    w('Total:', 60, 300, 'A:2'),
+    w('45', 110, 300, 'A:2'),
+    w('Archivo', 66, 40, 'A:1'), // duplicado de otra variante
+  ];
+  const txt = screenTextForPrompt(words);
+  const lines = txt.split('\n');
+  assert.equal(lines.length, 2);
+  assert.ok(lines[0].includes('Archivo | Ayuda'), lines[0]);
+  assert.ok(lines[1].includes('Total: 45'), lines[1]);
+  assert.equal((txt.match(/Archivo/g) || []).length, 1, 'sin duplicados entre variantes');
+});
+
+test('OCR - varias tareas a la vez no bloquean (semáforo de procesos)', { timeout: 120000 }, async (t) => {
+  if (!(await ocrAvailable())) {
+    t.skip('Tesseract no está instalado en esta máquina');
+    return;
+  }
+  const base = PNG.sync.read(fs.readFileSync('test/fixtures/sigecom-modal.png'));
+  const jobs = [0, 1, 2, 3, 4].map((k) => {
+    const p = new PNG({ width: base.width, height: base.height });
+    base.data.copy(p.data);
+    p.data[k * 4] = (p.data[k * 4] + 1) % 256; // imagen distinta => sin caché
+    return ocrScreenshot(PNG.sync.write(p));
+  });
+  const res = await Promise.all(jobs);
+  assert.ok(res.every((r) => findTextMatches(r, 'Entendido').length > 0), 'todas encuentran Entendido');
+});
