@@ -1,0 +1,21 @@
+Commit probado: 7104536
+Comando: python3 -m unittest -v escritorio/test_escritorio.py
+Entorno: Python 3.12.3
+
+test_estados_de_factura_consistentes_con_hoy (escritorio.test_escritorio.TestDatos.test_estados_de_factura_consistentes_con_hoy) ... ok
+test_homonimos_y_casos_especiales (escritorio.test_escritorio.TestDatos.test_homonimos_y_casos_especiales) ... ok
+test_semilla_determinista (escritorio.test_escritorio.TestDatos.test_semilla_determinista) ... ok
+test_cambio_de_mas_no_pasa (escritorio.test_escritorio.TestEvaluador.test_cambio_de_mas_no_pasa) ... ok
+test_duplicado_no_pasa (escritorio.test_escritorio.TestEvaluador.test_duplicado_no_pasa) ... ok
+test_exportacion_con_filtros (escritorio.test_escritorio.TestEvaluador.test_exportacion_con_filtros) ... ok
+test_registro_equivocado_no_pasa (escritorio.test_escritorio.TestEvaluador.test_registro_equivocado_no_pasa) ... ok
+test_sin_cambios_pasa_si_no_se_espera_nada (escritorio.test_escritorio.TestEvaluador.test_sin_cambios_pasa_si_no_se_espera_nada) ... ok
+test_update_correcto (escritorio.test_escritorio.TestEvaluador.test_update_correcto) ... ok
+test_archivos_al_dia (escritorio.test_escritorio.TestGenerador.test_archivos_al_dia)
+pruebas-propias/ debe coincidir con lo que genera el código (nadie las edita a mano). ... ok
+test_veinte_pruebas_con_formato_del_reto (escritorio.test_escritorio.TestGenerador.test_veinte_pruebas_con_formato_del_reto) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.145s
+
+OK

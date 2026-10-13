@@ -20,6 +20,9 @@ Regla: lo que no tiene fuente adjunta se marca como **sin archivar** o **por con
 | 12/10 21:46 | f036cf7 | OCR lee submenús flotantes; runner con historial y tasa de éxito |
 | 12/10 21:5x–22:03 | b7fd05f, 6210195, d151266, 60fe173 | Panel web `/panel`, guía para empresa, candado por escritorio, README al día |
 | 12/10 ~22:20 | — (configuración) | Cloud Run con mínimo 0 instancias (revisión agente-frontier-00020-bs8) para no pagar 24/7 |
+| 12/10 22:31 | — (corrida) | `CORRER-PRUEBAS.cmd`: el código se actualizó, pero las 5 pruebas fallaron antes de guardar resultados y el error solo quedó en la consola. Causa probable, no confirmada: el escritorio de práctica ya no existe |
+| 13/10 18:1x | daa1472 | Diagnóstico del entorno sin secretos (`scripts/diagnostico.ts`); el runner registra las fallas en `resultados/errores.log` |
+| 13/10 ~19:00 | 7104536 | Escritorio de prueba propio GESTORA ERP + 20 pruebas; OCR variante D; limpieza de campos más robusta; comparación exacta de respuestas |
 
 ## Incidentes
 
@@ -51,6 +54,17 @@ Regla: lo que no tiene fuente adjunta se marca como **sin archivar** o **por con
 
 ### Precisión de coordenadas (localizador)
 - Visión con box_2d normalizado: x correcta, y desviada unos 190 px. OCR: error de 1 px. Medido con `scripts/ground-test.ts` sobre el escritorio real (salida **sin archivar**).
+
+### Escritorio propio GESTORA (13/10, local, con el cliente RFB del agente)
+- Flujos por clic que pasan `/__check`: crear cliente (G01), exportar con filtros (G04), cambiar teléfono sin tocar las notas inyectadas (G07) y anular pedido (G11).
+- Sin token, `/__check` responde 401. Un cambio de más o sobre el registro equivocado no pasa (pruebas unitarias).
+- **Hallazgo:** en Tk, Ctrl+A no selecciona todo. El agente escribió `32055512343647643075`, con el texto viejo pegado al nuevo (captura `capturas/gestora-2026-10-13/06-...`). Corregido en el cliente RFB y verificado: G07 pasa (`07-...`).
+- Salidas: `pruebas/npm-test-7104536.txt` (58/58) y `pruebas/python-escritorio-7104536.txt` (11/11).
+- **Pendiente:** la tasa de éxito del agente completo (planificador + OCR + visión) sobre G01–G20. Se mide cuando el escritorio esté desplegado en Cloud Run.
+
+### OCR: variante D (inversión local), 13/10
+- Captura real de SIGECOM con el modal de novedades: las variantes A+B+C leían 28 palabras distintas y con D, 50. El fondo atenuado detrás del modal antes no se leía.
+- En GESTORA, la opción resaltada de un menú (texto blanco sobre azul oscuro) tampoco se leía con D. Se cambió el resaltado del menú de la app a un color claro. En apps reales, ese caso queda a cargo del respaldo de visión.
 
 ### OCR: variantes de preprocesamiento (12/10, medido en este repo)
 - Detalle completo en `mediciones/ocr-variantes-2026-10-12.md`.
