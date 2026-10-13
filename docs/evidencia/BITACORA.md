@@ -18,12 +18,14 @@ Regla: lo que no tiene fuente adjunta se marca como **sin archivar** o **por con
 | 12/10 19:53 | 1b2a381 | OCR de zona, campos con bordes rectos, listas desplegables |
 | 12/10 20:29 | 75ce496 | Doble clic real, memoria del razonamiento, capturas por paso |
 | 12/10 21:46 | f036cf7 | OCR lee submenús flotantes; runner con historial y tasa de éxito |
+| 12/10 21:5x–22:03 | b7fd05f, 6210195, d151266, 60fe173 | Panel web `/panel`, guía para empresa, candado por escritorio, README al día |
+| 12/10 ~22:20 | — (configuración) | Cloud Run con mínimo 0 instancias (revisión agente-frontier-00020-bs8) para no pagar 24/7 |
 
 ## Incidentes
 
 1. **Redespliegues que cortaron tareas en curso.** Cada `push` a `main` dispara Cloud Build y reinicia la única instancia de Cloud Run; las tareas en memoria se pierden.
    - 10/10: el push 05c14b3 se hizo durante una corrida de pruebas y se perdió E1.
-   - 12/10 ~19:53: el push 1b2a381 coincidió con la ventana en que el set oculto se detuvo en 34/56. **Por confirmar** si la evaluación se lanzó a las 19:21.
+   - 12/10 ~19:53: el push 1b2a381 coincidió con la ventana en que el set oculto se detuvo en 34/56. **No confirmado**: Andrés no recuerda si lanzó "Validar de nuevo" a las 19:21. Lo único verificable: su copia local del repo se actualizó a las 19:21:31 (fecha de modificación del README en su equipo), es decir, hubo actividad a esa hora. No se afirma causa.
    - Corrección de proceso: no se sube nada mientras haya una corrida activa.
 2. **Afirmación no verificable "30 de 30 pruebas"** en `docs/INCIDENTE.md`. Corregida el 12/10; ahora cada cifra de pruebas va con su salida completa en `docs/evidencia/pruebas/`.
 3. **Commit con prueba fallando** (2bbb8fb, 11/10 00:00). Corregido un minuto después en 8178fee. Desde entonces solo se sube si la salida dice `# fail 0`.
