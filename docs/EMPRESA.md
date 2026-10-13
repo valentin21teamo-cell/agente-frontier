@@ -51,7 +51,7 @@ Cada punto sale de un problema que tuvimos o de un riesgo concreto.
 **Riesgo.** El servidor acepta hasta 10 tareas simultáneas. En la competencia cada tarea traía su escritorio; en una empresa, dos tareas sobre el mismo escritorio se pisarían el ratón.
 
 **Solución:**
-- Un candado por escritorio: las tareas del mismo escritorio hacen fila.
+- Un candado por escritorio: las tareas del mismo escritorio hacen fila. **Ya existe**: se activa con `DESKTOP_LOCK=1` y tiene prueba en `test/store.test.ts`. Viene apagado para no cambiar el comportamiento del contrato de la competencia.
 - Un grupo de escritorios (varias sesiones VNC) para trabajar en paralelo.
 
 ### 3.3 Seguridad

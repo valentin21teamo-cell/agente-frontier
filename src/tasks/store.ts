@@ -135,8 +135,26 @@ export class TaskStore {
     return record;
   }
 
+  /**
+   * Con DESKTOP_LOCK=1, un escritorio solo ejecuta una tarea a la vez (dos tareas sobre la misma sesión VNC
+   * se pisan el ratón y el teclado). Apagado por defecto para no cambiar el comportamiento del contrato
+   * del evaluador; recomendado en producción (docs/EMPRESA.md, punto 3.2).
+   */
+  private get desktopLock(): boolean {
+    return process.env.DESKTOP_LOCK === '1';
+  }
+
+  private desktopBusy(record: TaskRecord): boolean {
+    if (!this.desktopLock) return false;
+    for (const id of this.activeWorkers) {
+      const t = this.tasks.get(id);
+      if (t && t.id !== record.id && t.desktop.url === record.desktop.url) return true;
+    }
+    return false;
+  }
+
   private dispatchOrEnqueue(record: TaskRecord): void {
-    if (this.activeWorkers.size < this.maxConcurrentTasks) {
+    if (this.activeWorkers.size < this.maxConcurrentTasks && !this.desktopBusy(record)) {
       this.activeWorkers.add(record.id);
       record.resumen = 'Tarea en ejecución...';
       if (this.workerRunner) {
@@ -156,7 +174,13 @@ export class TaskStore {
 
   private drainQueue(): void {
     while (this.queue.length > 0 && this.activeWorkers.size < this.maxConcurrentTasks) {
-      const nextId = this.queue.shift()!;
+      // Primera tarea de la fila (en orden de llegada) cuyo escritorio esté libre.
+      const pos = this.queue.findIndex((qid) => {
+        const t = this.tasks.get(qid);
+        return !t || t.estado !== 'en_curso' || !this.desktopBusy(t);
+      });
+      if (pos === -1) break;
+      const nextId = this.queue.splice(pos, 1)[0];
       const nextTask = this.tasks.get(nextId);
       if (!nextTask || nextTask.estado !== 'en_curso') {
         continue;

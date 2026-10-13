@@ -130,3 +130,28 @@ test('TaskStore - Halts with fallida when max steps reached', () => {
   store.clearForTesting();
   delete process.env.MAX_STEPS;
 });
+
+test('TaskStore - DESKTOP_LOCK=1: una tarea a la vez por escritorio, otros escritorios siguen en paralelo', async () => {
+  process.env.DESKTOP_LOCK = '1';
+  process.env.MAX_CONCURRENT_TASKS = '5';
+  const store = new TaskStore();
+  const started: string[] = [];
+  store.setWorkerRunner(async (t) => {
+    started.push(t.tarea);
+  });
+  const a1 = store.createTask({ tarea: 'A1', escritorio: { url: 'wss://a/websockify', password: 'p' } });
+  store.createTask({ tarea: 'A2', escritorio: { url: 'wss://a/websockify', password: 'p' } });
+  store.createTask({ tarea: 'B1', escritorio: { url: 'wss://b/websockify', password: 'p' } });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(started.sort(), ['A1', 'B1'], 'A2 espera porque el escritorio A está ocupado');
+  assert.equal(store.getQueueLength(), 1);
+
+  store.finalizeTask(a1.id, 'terminada', 'ok');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.ok(started.includes('A2'), 'A2 arranca al liberarse el escritorio A');
+  assert.equal(store.getQueueLength(), 0);
+
+  store.clearForTesting();
+  delete process.env.DESKTOP_LOCK;
+  delete process.env.MAX_CONCURRENT_TASKS;
+});
