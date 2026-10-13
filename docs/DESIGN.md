@@ -14,13 +14,13 @@ El sistema implementa un agente autónomo que opera un escritorio remoto a trav�
 - **Razón técnica**: Una única instancia con estado en memoria es la arquitectura más simple, determinista y menos propensa a fallar por latencia o particiones de red asociadas a brokers externos (Redis, bases de datos o colas distribuidas).
 - **Costo asumido**: El estado de las tareas se pierde si el servicio se reinicia. Dado el ciclo de vida de la evaluación (tareas de hasta 5 minutos) y el requisito de instancia única sin balanceo, este costo es aceptable y deliberado.
 - **Mecanismo de Cola FIFO**: Si el número de tareas concurrentes excede `MAX_CONCURRENT_TASKS` (por defecto 10), las tareas adicionales no se rechazan: se encolan en orden estricto de llegada (FIFO).
-- **Plazo de Tarea (`TASK_DEADLINE_MS`)**: El cronómetro de vencimiento (por defecto 270.000 ms / 4,5 minutos) se inicia en el momento exacto en que ingresa el `POST /tasks`. Si una tarea en cola no alcanza a iniciar con tiempo suficiente, finaliza honestamente como `fallida`.
+- **Plazo de Tarea (`TASK_DEADLINE_MS`)**: El cronómetro de vencimiento (por defecto 285.000 ms / 4 min 45 s; el evaluador da 5 min) se inicia en el momento exacto en que ingresa el `POST /tasks`. Si una tarea en cola no alcanza a iniciar con tiempo suficiente, finaliza honestamente como `fallida`.
 
 ## 4. Cliente RFB (Transporte y Percepción)
 - **Transporte**: Conexión WebSocket binaria a través de la librería estándar `ws`.
 - **Autenticación VNC**: Implementación según RFC 6143 Sección 7.2.2. La contraseña (máximo 8 bytes) se deriva con inversión de bits por byte y encripta el challenge de 16 bytes mediante DES en modo ECB sin padding.
 - **Resolución Dinámica**: La resolución se lee dinámicamente del mensaje `ServerInit`. No se asume ninguna resolución estática en el código.
-- **Renderizado de Framebuffer**: Almacena un framebuffer continuo de 32 bits (RGBA). Soporta la codificación estándar Raw con solicitudes de actualización incrementales continuas.
+- **Renderizado de Framebuffer**: Almacena un framebuffer continuo de 32 bits (RGBA). Soporta las codificaciones Raw, CopyRect y DesktopSize con solicitudes de actualización incrementales continuas.
 - **Temporización de Acciones**:
   - Clic de ratón: `MouseDown`, espera de 120 ms (garantiza superar el umbral de 100 ms ignorado por el entorno), `MouseUp`.
   - Tiempo de asentamiento: Tras cada acción (clic, texto, tecla, scroll) se espera un mínimo de 1.000 ms antes de cualquier captura o siguiente acción para permitir el repintado de la aplicación.
@@ -35,4 +35,4 @@ Toda salida hacia clientes HTTP, archivos de log y trazas de error pasa por `san
   - Tokens Bearer (`Bearer\s+\S+`)
   - Claves OpenRouter (`sk-or-[A-Za-z0-9_.-]+`)
   - Identificadores de evaluación (`ftr_[A-Za-z0-9_.-]+`)
-- Prohibición de registro o persistencia en disco de capturas de pantalla de tareas en producción.
+- Las capturas de pantalla de cada paso nunca se escriben a disco en el servidor: se guardan en memoria (máx. 30 por tarea), solo se entregan con el token y se liberan 20 minutos después de que la tarea termina.
