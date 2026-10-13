@@ -26,7 +26,7 @@ La aplicación empresarial bajo prueba actualizó su versión de interfaz:
 4. **Regla 3 (Fecha de la Aplicación):**
    - "Hoy" se lee directamente de la cabecera de la aplicación (`14/10/2026`).
 5. **Detección de Pantalla Estática:**
-   - Comparación de fotogramas previo y actual en cada ciclo; si la pantalla no cambia tras 2 intentos, se inyecta una advertencia de cambio de estrategia; tras 4 intentos sin cambio, se finaliza como fallida con reporte honesto.
+   - Comparación de fotogramas antes y después de cada acción; tras 2 rondas sin cambio visible se inyecta una advertencia de cambio de estrategia; tras 6 rondas seguidas sin cambio (`MAX_NO_CHANGE_STEPS` en `src/agent/loop.ts`) la tarea termina como fallida con reporte honesto. *(Corregido el 12/10/2026: la versión anterior de este documento decía 4; el valor se subió a 6 en el código y el documento no se actualizó.)*
 6. **Robustez ante Ausencia de MODEL_ID:**
    - Si `MODEL_ID` no está definida, `/health` continúa respondiendo `200` y las tareas finalizan como `fallida` de manera limpia sin colapsar el proceso del servidor.
 
@@ -35,5 +35,6 @@ La aplicación empresarial bajo prueba actualizó su versión de interfaz:
   Se envió un evento de ratón con el actuador (`MouseDown`, espera de 120 ms, `MouseUp`, espera de 1.000 ms) a las coordenadas $(840, 482)$. La captura posterior confirmó que el color del área central cambió al fondo gris de trabajo de SIGECOM (`RGB(216, 221, 230)`), verificando que el modal se cerró limpiamente.
 - **Restauración del Entorno:**  
   Inmediatamente después de la verificación del actuador, se emitió `POST /__reset` para restablecer el escritorio a su estado inicial de prueba.
-- **Suite de Pruebas Unitarias:**  
-  30 de 30 pruebas unitarias e integración pasando al 100%.
+- **Suite de Pruebas Automatizadas:**  
+  *Corrección (12/10/2026):* la versión anterior de este documento afirmaba "30 de 30 pruebas" sin adjuntar la salida; los jueces lo señalaron con razón como no verificable. Desde ahora cada afirmación sobre pruebas va con la salida completa del comando y el commit exacto probado, en [`docs/evidencia/pruebas/`](evidencia/pruebas/). Ejemplo: [`npm-test-f036cf7.txt`](evidencia/pruebas/npm-test-f036cf7.txt) — 52 pruebas, 52 aprobadas, 0 fallidas, 0 omitidas (incluye 4 pruebas de OCR sobre capturas reales de SIGECOM).  
+  Importante: estas pruebas verifican piezas (protocolo RFB, DES, OCR, parser de respuestas, contrato HTTP, flujo del agente con un escritorio simulado). **No** demuestran que el agente resuelva las tareas reales; eso solo lo mide el banco de pruebas contra el escritorio real (`scripts/run-test.ts`), cuyos resultados se registran en `resultados/historial.jsonl`.

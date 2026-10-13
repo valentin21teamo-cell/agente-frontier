@@ -1,0 +1,346 @@
+Commit probado: f036cf7 (2026-10-12T21:46:57-05:00)
+Comando: npm test
+Entorno: v22.22.0, tesseract 5.3.4, Linux 6.18.44-fc-v114
+
+
+> vnc-autonomous-agent@1.0.0 test
+> tsx --test test/*.test.ts
+
+TAP version 13
+# [Agent] Iniciando tarea 1a779532-cec0-41bb-9dc6-d0c673858130: "Prueba E2E"
+# [RFB] WebSocket abierto con 127.0.0.1:37269
+# [RFB] ServerInit recibido: 640x480, Desktop: "Mock-Desktop"
+# [Agent] Conectado a escritorio (640x480)
+# [Agent] Paso 1: click("botón 'Entendido'"), type_text("campo 'Nombre'"), press_key - Cerrar aviso y llenar campo
+# [Agent]   Clic en "botón 'Entendido'" → (320,240) vía localizador [SIN cambio visible]
+# [Agent]   Escribió "Ab1" en "campo 'Nombre'" → campo en (320,240) vía localizador [SIN cambio visible]
+# [Agent]   Tecla esc [SIN cambio visible]
+# [Agent] Paso 2: finish - 
+# Subtest: Agente E2E - planificador + localizador sobre escritorio RFB simulado
+ok 1 - Agente E2E - planificador + localizador sobre escritorio RFB simulado
+  ---
+  duration_ms: 8975.49598
+  type: 'test'
+  ...
+# Subtest: ClickLadder - el primer clic no se desplaza y el repetido sí, en pasos pequeños
+ok 2 - ClickLadder - el primer clic no se desplaza y el repetido sí, en pasos pequeños
+  ---
+  duration_ms: 1.952408
+  type: 'test'
+  ...
+# Subtest: ClickLadder - no se sale de la pantalla
+ok 3 - ClickLadder - no se sale de la pantalla
+  ---
+  duration_ms: 0.195074
+  type: 'test'
+  ...
+# ◇ injected env (0) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+# Subtest: HTTP Contract - GET /health responds 200 without Authorization header
+ok 4 - HTTP Contract - GET /health responds 200 without Authorization header
+  ---
+  duration_ms: 63.60734
+  type: 'test'
+  ...
+# Subtest: HTTP Contract - /tasks routes enforce Authorization: Bearer <TEAM_TOKEN>
+ok 5 - HTTP Contract - /tasks routes enforce Authorization: Bearer <TEAM_TOKEN>
+  ---
+  duration_ms: 31.181198
+  type: 'test'
+  ...
+# Subtest: HTTP Contract - POST /tasks validates required fields and protocols (400 if invalid)
+ok 6 - HTTP Contract - POST /tasks validates required fields and protocols (400 if invalid)
+  ---
+  duration_ms: 12.261075
+  type: 'test'
+  ...
+# Subtest: HTTP Contract - "/" and "/status" do not leak tasks, summaries, or secrets
+ok 7 - HTTP Contract - "/" and "/status" do not leak tasks, summaries, or secrets
+  ---
+  duration_ms: 8.972077
+  type: 'test'
+  ...
+# Subtest: HTTP Contract - POST /tasks creates task in < 2s and GET /tasks/:id reflects lifecycle
+ok 8 - HTTP Contract - POST /tasks creates task in < 2s and GET /tasks/:id reflects lifecycle
+  ---
+  duration_ms: 70.353802
+  type: 'test'
+  ...
+# Subtest: HTTP Contract - 20 concurrent POST /tasks with simulated RFB/model isolate states without mixing
+ok 9 - HTTP Contract - 20 concurrent POST /tasks with simulated RFB/model isolate states without mixing
+  ---
+  duration_ms: 172.126918
+  type: 'test'
+  ...
+# Subtest: HTTP Contract - GET /tasks/:task_id returns 404 if task does not exist
+ok 10 - HTTP Contract - GET /tasks/:task_id returns 404 if task does not exist
+  ---
+  duration_ms: 3.78723
+  type: 'test'
+  ...
+# [Agent] Tarea 559a77fa-7a51-4b91-8a08-cb88343af6ea fallida: MODEL_ID no está configurada.
+# Subtest: HTTP Contract - When MODEL_ID is missing, server stays up with /health 200 and task ends fallida honestly
+ok 11 - HTTP Contract - When MODEL_ID is missing, server stays up with /health 200 and task ends fallida honestly
+  ---
+  duration_ms: 107.863645
+  type: 'test'
+  ...
+# Subtest: Standard DES Test Vector (NBS / FIPS PUB 46)
+ok 12 - Standard DES Test Vector (NBS / FIPS PUB 46)
+  ---
+  duration_ms: 1.482485
+  type: 'test'
+  ...
+# Subtest: VNC DES - Bit reversal reverses 8 bits correctly
+ok 13 - VNC DES - Bit reversal reverses 8 bits correctly
+  ---
+  duration_ms: 0.178693
+  type: 'test'
+  ...
+# Subtest: VNC DES - prepareVncKey pads and truncates to 8 bytes
+ok 14 - VNC DES - prepareVncKey pads and truncates to 8 bytes
+  ---
+  duration_ms: 0.181282
+  type: 'test'
+  ...
+# Subtest: VNC DES - encryptVncChallenge encrypts 16-byte challenge into 16-byte response
+ok 15 - VNC DES - encryptVncChallenge encrypts 16-byte challenge into 16-byte response
+  ---
+  duration_ms: 1.469989
+  type: 'test'
+  ...
+# Subtest: parseBox - box_2d normalizado [ymin,xmin,ymax,xmax] a píxeles
+ok 16 - parseBox - box_2d normalizado [ymin,xmin,ymax,xmax] a píxeles
+  ---
+  duration_ms: 0.889412
+  type: 'test'
+  ...
+# Subtest: parseBox - listas, point [y,x], píxeles y null
+ok 17 - parseBox - listas, point [y,x], píxeles y null
+  ---
+  duration_ms: 0.253244
+  type: 'test'
+  ...
+# Subtest: imageOps - zoomRect no se sale de la pantalla y cropAndScale amplía
+ok 18 - imageOps - zoomRect no se sale de la pantalla y cropAndScale amplía
+  ---
+  duration_ms: 151.621174
+  type: 'test'
+  ...
+# Subtest: groundTarget - dos pasadas: el zoom refina y se mapea a coordenadas de pantalla
+ok 19 - groundTarget - dos pasadas: el zoom refina y se mapea a coordenadas de pantalla
+  ---
+  duration_ms: 128.13951
+  type: 'test'
+  ...
+# Subtest: groundTarget - si el zoom devuelve todo el recorte, usa la primera pasada; si no lo ve, null
+ok 20 - groundTarget - si el zoom devuelve todo el recorte, usa la primera pasada; si no lo ve, null
+  ---
+  duration_ms: 197.055617
+  type: 'test'
+  ...
+# Subtest: parsePlan - lote, acción suelta, lista y texto con ```json
+ok 21 - parsePlan - lote, acción suelta, lista y texto con ```json
+  ---
+  duration_ms: 0.881531
+  type: 'test'
+  ...
+# Subtest: Teclas - alias comunes del modelo
+ok 22 - Teclas - alias comunes del modelo
+  ---
+  duration_ms: 0.514832
+  type: 'test'
+  ...
+# Subtest: Keyboard Mapping - "Papelería" correctly maps accents, uppercase, and lowercase
+ok 23 - Keyboard Mapping - "Papelería" correctly maps accents, uppercase, and lowercase
+  ---
+  duration_ms: 0.822163
+  type: 'test'
+  ...
+# Subtest: Keyboard Mapping - "Calle 80 \# 24-15" maps numbers, spaces, hash and hyphen
+ok 24 - Keyboard Mapping - "Calle 80 \# 24-15" maps numbers, spaces, hash and hyphen
+  ---
+  duration_ms: 0.211357
+  type: 'test'
+  ...
+# Subtest: Keyboard Mapping - Email address with @, dots and symbols
+ok 25 - Keyboard Mapping - Email address with @, dots and symbols
+  ---
+  duration_ms: 0.27997
+  type: 'test'
+  ...
+# Subtest: Keyboard Mapping - Spanish special characters: ñ, Ñ, tildes, ¿, ¡, %, $
+ok 26 - Keyboard Mapping - Spanish special characters: ñ, Ñ, tildes, ¿, ¡, %, $
+  ---
+  duration_ms: 0.118126
+  type: 'test'
+  ...
+# Subtest: Keyboard Mapping - Combos parse correctly (ctrl+a, backspace, enter)
+ok 27 - Keyboard Mapping - Combos parse correctly (ctrl+a, backspace, enter)
+  ---
+  duration_ms: 0.372938
+  type: 'test'
+  ...
+# Subtest: OCR - extractTargetText usa "texto" o lo que va entre comillas
+ok 28 - OCR - extractTargetText usa "texto" o lo que va entre comillas
+  ---
+  duration_ms: 1.036816
+  type: 'test'
+  ...
+# Subtest: OCR - findTextMatches prefiere la etiqueta suelta, tolera tildes y errores leves
+ok 29 - OCR - findTextMatches prefiere la etiqueta suelta, tolera tildes y errores leves
+  ---
+  duration_ms: 2.593915
+  type: 'test'
+  ...
+# Subtest: OCR - findFieldNearLabel encuentra la caja de entrada a la derecha de la etiqueta
+ok 30 - OCR - findFieldNearLabel encuentra la caja de entrada a la derecha de la etiqueta
+  ---
+  duration_ms: 28.749966
+  type: 'test'
+  ...
+# Subtest: OCR - captura real de SIGECOM: "Entendido" y menús con precisión de píxel
+ok 31 - OCR - captura real de SIGECOM: "Entendido" y menús con precisión de píxel
+  ---
+  duration_ms: 1451.389524
+  type: 'test'
+  ...
+# Subtest: OCR - findFieldNearLabel con campo que ya tiene texto y borde suave sobre fondo blanco
+ok 32 - OCR - findFieldNearLabel con campo que ya tiene texto y borde suave sobre fondo blanco
+  ---
+  duration_ms: 10.836673
+  type: 'test'
+  ...
+# Subtest: OCR - screenTextForPrompt arma filas de arriba abajo y separa columnas
+ok 33 - OCR - screenTextForPrompt arma filas de arriba abajo y separa columnas
+  ---
+  duration_ms: 3.418697
+  type: 'test'
+  ...
+# Subtest: OCR - varias tareas a la vez no bloquean (semáforo de procesos)
+ok 34 - OCR - varias tareas a la vez no bloquean (semáforo de procesos)
+  ---
+  duration_ms: 6484.415149
+  type: 'test'
+  ...
+# Subtest: OCR - findFieldNearLabel con la etiqueta ENCIMA del campo
+ok 35 - OCR - findFieldNearLabel con la etiqueta ENCIMA del campo
+  ---
+  duration_ms: 8.326397
+  type: 'test'
+  ...
+# Subtest: OCR - findFieldNearLabel NO confunde el texto de una etiqueta vecina con un campo
+ok 36 - OCR - findFieldNearLabel NO confunde el texto de una etiqueta vecina con un campo
+  ---
+  duration_ms: 8.625311
+  type: 'test'
+  ...
+# Subtest: OCR - ocrRegion lee una zona ampliada y devuelve coordenadas de pantalla
+ok 37 - OCR - ocrRegion lee una zona ampliada y devuelve coordenadas de pantalla
+  ---
+  duration_ms: 580.098468
+  type: 'test'
+  ...
+# Subtest: OCR - captura real del agente (E1, 12/10): "Clientes" dentro del submenú flotante Comercial > Maestros
+ok 38 - OCR - captura real del agente (E1, 12/10): "Clientes" dentro del submenú flotante Comercial > Maestros
+  ---
+  duration_ms: 2734.165717
+  type: 'test'
+  ...
+# [RFB] WebSocket abierto con 127.0.0.1:34805
+# [RFB] ServerInit recibido: 640x480, Desktop: "Mock-Desktop"
+# Subtest: RfbClient - Full Handshake, Dynamic Resolution, Framebuffer Rendering, and PNG Export
+ok 39 - RfbClient - Full Handshake, Dynamic Resolution, Framebuffer Rendering, and PNG Export
+  ---
+  duration_ms: 3390.793374
+  type: 'test'
+  ...
+# [RFB] WebSocket abierto con 127.0.0.1:37193
+# Subtest: RfbClient - Rejects with Authentication Failure on incorrect password
+ok 40 - RfbClient - Rejects with Authentication Failure on incorrect password
+  ---
+  duration_ms: 8.881769
+  type: 'test'
+  ...
+# Subtest: Sanitization - Redacts exact task password
+ok 41 - Sanitization - Redacts exact task password
+  ---
+  duration_ms: 1.081225
+  type: 'test'
+  ...
+# Subtest: Sanitization - Redacts regex special characters safely in passwords
+ok 42 - Sanitization - Redacts regex special characters safely in passwords
+  ---
+  duration_ms: 0.263782
+  type: 'test'
+  ...
+# Subtest: Sanitization - Redacts TEAM_TOKEN and OPENROUTER_API_KEY from environment
+ok 43 - Sanitization - Redacts TEAM_TOKEN and OPENROUTER_API_KEY from environment
+  ---
+  duration_ms: 0.266316
+  type: 'test'
+  ...
+# Subtest: Sanitization - Redacts Bearer tokens via regex
+ok 44 - Sanitization - Redacts Bearer tokens via regex
+  ---
+  duration_ms: 0.103616
+  type: 'test'
+  ...
+# Subtest: Sanitization - Redacts sk-or-... pattern via regex
+ok 45 - Sanitization - Redacts sk-or-... pattern via regex
+  ---
+  duration_ms: 0.184808
+  type: 'test'
+  ...
+# Subtest: Sanitization - Redacts ftr_... pattern via regex
+ok 46 - Sanitization - Redacts ftr_... pattern via regex
+  ---
+  duration_ms: 0.091498
+  type: 'test'
+  ...
+# Subtest: Sanitization - Safe handling of null, undefined, numbers
+ok 47 - Sanitization - Safe handling of null, undefined, numbers
+  ---
+  duration_ms: 0.227828
+  type: 'test'
+  ...
+# [TaskStore] Intento tardío de modificar tarea eb882234-fef8-4bef-aa4c-afd41bb6c9b6 en estado terminada ignorado.
+# Subtest: TaskStore - Creates task with initial state en_curso and isolated AbortController
+ok 48 - TaskStore - Creates task with initial state en_curso and isolated AbortController
+  ---
+  duration_ms: 1.161652
+  type: 'test'
+  ...
+# Subtest: TaskStore - State machine transitions and terminal immutability
+ok 49 - TaskStore - State machine transitions and terminal immutability
+  ---
+  duration_ms: 1.451775
+  type: 'test'
+  ...
+# Subtest: TaskStore - Discards late actions and triggers registered cleanups
+ok 50 - TaskStore - Discards late actions and triggers registered cleanups
+  ---
+  duration_ms: 0.448969
+  type: 'test'
+  ...
+# [TaskStore] Tarea 20dfc121-7638-4deb-b9c4-b32f082d05cd alcanzó el límite de pasos (3).
+# Subtest: TaskStore - Enqueues excess tasks and drains in FIFO order without rejecting
+ok 51 - TaskStore - Enqueues excess tasks and drains in FIFO order without rejecting
+  ---
+  duration_ms: 41.929933
+  type: 'test'
+  ...
+# Subtest: TaskStore - Halts with fallida when max steps reached
+ok 52 - TaskStore - Halts with fallida when max steps reached
+  ---
+  duration_ms: 0.728281
+  type: 'test'
+  ...
+1..52
+# tests 52
+# suites 0
+# pass 52
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 35887.94747
