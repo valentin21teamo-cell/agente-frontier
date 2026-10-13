@@ -123,3 +123,36 @@ test('OCR - varias tareas a la vez no bloquean (semáforo de procesos)', { timeo
   const res = await Promise.all(jobs);
   assert.ok(res.every((r) => findTextMatches(r, 'Entendido').length > 0), 'todas encuentran Entendido');
 });
+
+function canvas(W: number, H: number, bg = 255) {
+  const png = new PNG({ width: W, height: H });
+  for (let i = 0; i < W * H; i++) { png.data[i * 4] = bg; png.data[i * 4 + 1] = bg; png.data[i * 4 + 2] = bg; png.data[i * 4 + 3] = 255; }
+  const set = (x: number, y: number, v: number) => { const i = (y * W + x) * 4; png.data[i] = v; png.data[i + 1] = v; png.data[i + 2] = v; };
+  return { png, set };
+}
+
+test('OCR - findFieldNearLabel con la etiqueta ENCIMA del campo', () => {
+  const { png, set } = canvas(400, 120);
+  for (let x = 40; x <= 300; x++) { set(x, 50, 180); set(x, 76, 180); }
+  for (let y = 50; y <= 76; y++) { set(40, y, 180); set(300, y, 180); }
+  const p = findFieldNearLabel(PNG.sync.write(png), { x: 40, y: 30, w: 80, h: 10 });
+  assert.ok(p && p.y > 50 && p.y < 76 && p.x > 40 && p.x < 300, JSON.stringify(p));
+});
+
+test('OCR - findFieldNearLabel NO confunde el texto de una etiqueta vecina con un campo', () => {
+  const { png, set } = canvas(500, 80);
+  // "letras" de una etiqueta vecina: bloques de 6x9 separados, sin bordes rectos largos
+  for (let k = 0; k < 10; k++) for (let x = 200 + k * 9; x < 206 + k * 9; x++) for (let y = 36; y < 45; y++) set(x, y, 30);
+  const p = findFieldNearLabel(PNG.sync.write(png), { x: 40, y: 36, w: 90, h: 9 });
+  assert.equal(p, null);
+});
+
+test('OCR - ocrRegion lee una zona ampliada y devuelve coordenadas de pantalla', { timeout: 60000 }, async (t) => {
+  if (!(await ocrAvailable())) { t.skip('Tesseract no está instalado'); return; }
+  const { ocrRegion } = await import('../src/agent/ocr.js');
+  const buf = fs.readFileSync('test/fixtures/sigecom-modal.png');
+  const zw = await ocrRegion(buf, { x: 600, y: 300, w: 400, h: 200 }, 3);
+  const m = findTextMatches(zw, 'Entendido')[0];
+  assert.ok(m, 'debe encontrar Entendido en la zona');
+  assert.ok(Math.abs(m.box.x + m.box.w / 2 - 749) <= 6 && Math.abs(m.box.y + m.box.h / 2 - 404) <= 5, JSON.stringify(m.box));
+});

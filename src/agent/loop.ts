@@ -18,7 +18,7 @@ import { RfbClient } from '../rfb/client.js';
 import { OpenRouterClient, AgentAction } from './openrouter.js';
 import { safeLogger } from '../security/sanitize.js';
 import { groundTarget } from './grounder.js';
-import { ocrScreenshot, findTextMatches, findFieldNearLabel, extractTargetText, screenTextForPrompt, OcrWord } from './ocr.js';
+import { ocrScreenshot, ocrRegion, findTextMatches, findFieldNearLabel, extractTargetText, screenTextForPrompt, OcrWord } from './ocr.js';
 import { applyLadder, TriedPoint } from './clickLadder.js';
 
 const SYSTEM_PROMPT = `Eres un agente autónomo experto en operar software de gestión empresarial (aplicaciones de escritorio legadas) mediante capturas de pantalla, ratón y teclado.
@@ -39,7 +39,9 @@ REGLAS:
 11. Si una acción no cambió la pantalla, no la repitas igual: describe mejor el objetivo, usa el teclado (Enter, Tab, Escape) u otra ruta.
 12. Antes de "finish", verifica en la captura ACTUAL la evidencia del cambio (mensaje de confirmación, registro en la lista o valor actualizado). Sin evidencia visible no uses "finish": búscala (por ejemplo, abre la lista o busca el registro). Si el tiempo restante es bajo, prioriza verificar y terminar.
 13. Eficiencia: tienes unos 4 minutos y cada paso tarda varios segundos. Ve directo al módulo correcto, agrupa acciones en lotes, no abras pantallas innecesarias y, en consultas, apenas el dato pedido sea visible termina con "finish".
-14. Conteos y consultas: usa los filtros y buscadores de la aplicación (cliente, estado, fechas). Si la aplicación muestra un total, úsalo; si cuentas filas, apóyate en el texto OCR y revisa si hay más páginas o desplazamiento.`;
+14. Conteos y consultas: aplica TODOS los filtros que pide la tarea (por ejemplo cliente Y estado Y fechas) con los controles de filtro de la aplicación y confirma en la captura que la tabla muestra solo esos registros antes de contar. Si hay un contador o paginación ("N registros", "Mostrando 1-20 de N"), usa el total. Si cuentas filas, apóyate en el texto OCR y revisa si hay más páginas o desplazamiento.
+15. Listas desplegables: haz clic en la lista y luego clic en la opción con su texto exacto. Si las opciones no aparecen, con la lista enfocada escribe el texto de la opción (type_text sin objetivo, "clear_first": false) y pulsa Enter.
+16. Campos: para escribir usa type_text con "texto" = la etiqueta del campo; el campo se limpia solo antes de escribir. No envíes type_text con "text" vacío. Escribe las fechas en el formato que muestre el campo o su marcador.`;
 
 const MAX_BATCH = 6;
 const MAX_NO_CHANGE_STEPS = 6;
@@ -131,14 +133,60 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
     if (task.trace!.length < 400) task.trace!.push(l);
   };
 
-  /** Resuelve el punto de una acción: primero el localizador por objetivo; si no, la pista x,y del planificador. */
-  async function resolvePoint(
-    action: AgentAction,
-    screenshot: Buffer
-  ): Promise<{ x: number; y: number; via: string; costUsd: number } | { x: null; costUsd: number; reason: string }> {
-    let costUsd = 0;
+  /** Último punto donde se hizo clic: las opciones de una lista desplegable aparecen cerca de él. */
+  let lastClick: { x: number; y: number } | null = null;
 
-    // 1) Texto visible -> OCR (coordenadas exactas, sin IA).
+  type Resolved = { x: number; y: number; via: string; costUsd: number } | { x: null; costUsd: number; reason: string };
+  type Match = ReturnType<typeof findTextMatches>[number];
+
+  /**
+   * Resuelve el punto de una acción, en este orden:
+   *  1) OCR de la pantalla completa con el texto visible (exacto o por palabras).
+   *  2) Si no aparece: el localizador de visión da una zona aproximada y se hace OCR ampliado x3 de esa zona.
+   *  3) Si tampoco: el punto del localizador de visión. 4) Por último, la pista x,y del planificador.
+   */
+  async function resolvePoint(action: AgentAction, screenshot: Buffer): Promise<Resolved> {
+    let costUsd = 0;
+    const isField = action.action === 'type_text';
+    const centerOf = (m: Match) => ({ x: Math.round(m.box.x + m.box.w / 2), y: Math.round(m.box.y + m.box.h / 2) });
+    const finish = (m: Match, via: string): Resolved => {
+      if (isField) {
+        const field = findFieldNearLabel(screenshot, m.box);
+        if (field) return { x: field.x, y: field.y, via: `${via}+campo`, costUsd };
+        // Sin caja detectada: lo más común es etiqueta a la izquierda y campo a la derecha.
+        return { x: Math.min(client.width - 5, Math.round(m.box.x + m.box.w + 45)), y: centerOf(m).y, via: `${via}+derecha`, costUsd };
+      }
+      const c = centerOf(m);
+      return { x: c.x, y: c.y, via, costUsd };
+    };
+    const nearestTo = (list: Match[], pt: { x: number; y: number }, wy = 0.3) =>
+      list.reduce((a, b) => {
+        const da = Math.abs(centerOf(a).x - pt.x) + wy * Math.abs(centerOf(a).y - pt.y);
+        const db = Math.abs(centerOf(b).x - pt.x) + wy * Math.abs(centerOf(b).y - pt.y);
+        return db < da ? b : a;
+      });
+
+    let visionPoint: { x: number; y: number } | null = null;
+    let visionTried = false;
+    const vision = async (): Promise<{ x: number; y: number } | null> => {
+      if (visionTried) return visionPoint;
+      visionTried = true;
+      if (!action.objetivo && !action.texto) return null;
+      try {
+        const desc = action.texto
+          ? `${(action.objetivo ?? 'elemento').trim()} (texto visible: "${action.texto}")`
+          : (action.objetivo ?? '').trim();
+        const tG = Date.now();
+        const g = await groundTarget(router, screenshot, desc, client.width, client.height, { abortSignal: signal, zoom: groundZoom });
+        costUsd += g.costUsd;
+        trace(`    Visión ${((Date.now() - tG) / 1000).toFixed(1)}s -> ${g.point ? `(${g.point.x},${g.point.y})` : 'no encontrado'}`);
+        visionPoint = g.point;
+      } catch (e) {
+        safeLogger.warn(`[Agent] Localizador falló: ${e instanceof Error ? e.message : e}`);
+      }
+      return visionPoint;
+    };
+
     const wanted = extractTargetText(action.objetivo, action.texto);
     if (wanted) {
       try {
@@ -146,111 +194,86 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         const words = await ocrScreenshot(screenshot);
         const matches = findTextMatches(words, wanted);
         trace(`    OCR ${((Date.now() - tO) / 1000).toFixed(1)}s, ${words.length} palabras; "${wanted}" -> ${matches.length} coincidencia(s)`);
+
         if (matches.length > 0) {
           let best = matches[0];
           const rivals = matches.filter((m) => m.score >= best.score - 0.1);
-          if (rivals.length > 1 && action.objetivo) {
-            // Varios textos iguales: el localizador de visión (bueno en x, impreciso en y) elige el más cercano.
-            try {
-              const g = await groundTarget(router, screenshot, action.objetivo, client.width, client.height, {
-                abortSignal: signal,
-                zoom: false,
-              });
-              costUsd += g.costUsd;
-              if (g.point) {
-                const pt = g.point;
-                const dist = (m: typeof best) =>
-                  Math.abs(m.box.x + m.box.w / 2 - pt.x) + 0.3 * Math.abs(m.box.y + m.box.h / 2 - pt.y);
-                best = rivals.reduce((a, b) => (dist(b) < dist(a) ? b : a));
-              }
-            } catch {
-              /* sin desempate: se queda el de mayor puntaje */
+          if (rivals.length > 1) {
+            // Lista desplegable recién abierta: la opción está cerca del último clic.
+            const near = lastClick
+              ? rivals.filter((m) => Math.hypot(centerOf(m).x - lastClick!.x, centerOf(m).y - lastClick!.y) < 260)
+              : [];
+            if (!isField && near.length > 0 && near.length < rivals.length) {
+              best = nearestTo(near, lastClick!, 1);
+            } else {
+              const vp = await vision();
+              if (vp) best = nearestTo(rivals, vp);
             }
           }
-          if (action.action === 'type_text') {
-            // La etiqueta puede repetirse (p. ej. como encabezado de tabla): vale la que tiene un campo al lado.
+          if (isField && matches.length > 1) {
+            // La etiqueta puede repetirse (p. ej. encabezado de tabla): vale la que tiene un campo al lado.
             for (const cand of [best, ...matches.filter((m) => m !== best)].slice(0, 4)) {
               const field = findFieldNearLabel(screenshot, cand.box);
               if (field) return { x: field.x, y: field.y, via: `ocr("${cand.text}")+campo`, costUsd };
             }
-            // Sin caja detectada: el diseño más común es etiqueta a la izquierda y campo a la derecha.
-            return {
-              x: Math.min(client.width - 5, Math.round(best.box.x + best.box.w + 45)),
-              y: Math.round(best.box.y + best.box.h / 2),
-              via: `ocr("${best.text}")+derecha`,
-              costUsd,
-            };
-          } else {
-            return {
-              x: Math.round(best.box.x + best.box.w / 2),
-              y: Math.round(best.box.y + best.box.h / 2),
-              via: `ocr("${best.text}")`,
-              costUsd,
-            };
           }
-        } else {
-          // Frase no encontrada completa: se buscan sus palabras largas y la visión (buena en x) elige la más cercana.
-          const partial = wanted
-            .split(/\s+/)
-            .filter((t) => t.replace(/[^\p{L}\p{N}]/gu, '').length >= 4)
-            .flatMap((t) => findTextMatches(words, t));
-          if (partial.length > 0) {
-            let pick = partial.length === 1 ? partial[0] : null;
-            if (action.objetivo) {
-              try {
-                const g = await groundTarget(router, screenshot, `${action.objetivo} (texto visible: "${wanted}")`, client.width, client.height, {
-                  abortSignal: signal,
-                  zoom: false,
-                });
-                costUsd += g.costUsd;
-                if (g.point) {
-                  const pt = g.point;
-                  const dist = (m: (typeof partial)[number]) =>
-                    Math.abs(m.box.x + m.box.w / 2 - pt.x) + 0.3 * Math.abs(m.box.y + m.box.h / 2 - pt.y);
-                  const near = partial.filter((m) => Math.abs(m.box.x + m.box.w / 2 - pt.x) < 220);
-                  if (near.length > 0) pick = near.reduce((a, b) => (dist(b) < dist(a) ? b : a));
-                }
-              } catch {
-                /* sin visión: solo si hay un único candidato */
-              }
-            }
-            if (pick) {
-              trace(`    OCR parcial: "${pick.text}" para "${wanted}"`);
-              if (action.action === 'type_text') {
-                const field = findFieldNearLabel(screenshot, pick.box);
-                if (field) return { x: field.x, y: field.y, via: `ocr-parcial("${pick.text}")+campo`, costUsd };
-              }
-              return {
-                x: Math.round(pick.box.x + pick.box.w / 2),
-                y: Math.round(pick.box.y + pick.box.h / 2),
-                via: `ocr-parcial("${pick.text}")`,
-                costUsd,
-              };
-            }
+          return finish(best, `ocr("${best.text}")`);
+        }
+
+        // Frase no encontrada completa: palabras largas de la frase, desempatando con la visión.
+        const partial = wanted
+          .split(/\s+/)
+          .filter((t) => t.replace(/[^\p{L}\p{N}]/gu, '').length >= 4)
+          .flatMap((t) => findTextMatches(words, t));
+        const vp = await vision();
+        if (partial.length > 0) {
+          const pool = vp ? partial.filter((m) => Math.abs(centerOf(m).x - vp.x) < 220) : partial.length === 1 ? partial : [];
+          if (pool.length > 0) {
+            const pick = vp ? nearestTo(pool, vp) : pool[0];
+            trace(`    OCR parcial: "${pick.text}" para "${wanted}"`);
+            return finish(pick, `ocr-parcial("${pick.text}")`);
           }
+        }
+
+        // OCR ampliado x3 de la zona que señala la visión (menús flotantes, texto pequeño o sobre color).
+        if (vp) {
+          const zw = 560;
+          const zh = 440;
+          const region = {
+            x: Math.max(0, Math.min(client.width - zw, vp.x - zw / 2)),
+            y: Math.max(0, Math.min(client.height - zh, vp.y - zh / 2)),
+            w: Math.min(zw, client.width),
+            h: Math.min(zh, client.height),
+          };
+          const tZ = Date.now();
+          const zwords = await ocrRegion(screenshot, region, 3);
+          let zm = findTextMatches(zwords, wanted);
+          if (zm.length === 0) {
+            zm = wanted
+              .split(/\s+/)
+              .filter((t) => t.replace(/[^\p{L}\p{N}]/gu, '').length >= 4)
+              .flatMap((t) => findTextMatches(zwords, t));
+          }
+          trace(`    OCR de zona ${((Date.now() - tZ) / 1000).toFixed(1)}s, ${zwords.length} palabras; "${wanted}" -> ${zm.length}`);
+          if (zm.length > 0) {
+            const pick = nearestTo(zm, vp);
+            return finish(pick, `ocr-zona("${pick.text}")`);
+          }
+          if (!isField) return { x: vp.x, y: vp.y, via: 'localizador', costUsd };
         }
       } catch (e) {
         safeLogger.warn(`[Agent] OCR falló para "${wanted}": ${e instanceof Error ? e.message : e}`);
       }
+    } else if (action.objetivo && action.objetivo.trim()) {
+      // Sin texto visible (iconos): solo visión.
+      const vp = await vision();
+      if (vp) return { x: vp.x, y: vp.y, via: 'localizador', costUsd };
     }
 
-    // 2) Localizador de visión.
-    if (action.objetivo && action.objetivo.trim().length > 0) {
-      try {
-        const desc = action.texto ? `${action.objetivo.trim()} (texto visible: "${action.texto}")` : action.objetivo.trim();
-        const tG = Date.now();
-        const g = await groundTarget(router, screenshot, desc, client.width, client.height, {
-          abortSignal: signal,
-          zoom: groundZoom,
-        });
-        costUsd += g.costUsd;
-        trace(`    Visión ${((Date.now() - tG) / 1000).toFixed(1)}s -> ${g.point ? `(${g.point.x},${g.point.y}) ${g.via}` : 'no encontrado'}`);
-        if (g.point) {
-          return { x: g.point.x, y: g.point.y, via: g.via === 'zoom' ? 'localizador+zoom' : 'localizador', costUsd };
-        }
-      } catch (e) {
-        safeLogger.warn(`[Agent] Localizador falló para "${action.objetivo}": ${e instanceof Error ? e.message : e}`);
-      }
+    // Último recurso para campos: el punto de visión (si existe) antes que la pista.
+    if (isField && visionPoint) {
+      const vp = visionPoint as { x: number; y: number };
+      return { x: vp.x, y: vp.y, via: 'localizador', costUsd };
     }
     if (typeof action.x === 'number' && typeof action.y === 'number') {
       const isNorm1000 = process.env.COORD_MODE === 'norm1000';
@@ -275,6 +298,7 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         if (p.x === null) return { note: `→ ${p.reason}; lote detenido`, stopBatch: true, costUsd: p.costUsd };
         if (action.action === 'click') await client.mouseClick(p.x, p.y);
         else if (action.action === 'double_click') await client.mouseDoubleClick(p.x, p.y);
+        if (action.action !== 'move') lastClick = { x: p.x, y: p.y };
         else {
           await client.movePath(p.x, p.y);
           await sleep(900);
@@ -291,6 +315,7 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
           // Nunca escribir a ciegas si el campo pedido no se encontró.
           if (p.x === null) return { note: `→ ${p.reason}; no se escribió; lote detenido`, stopBatch: true, costUsd };
           await client.mouseClick(p.x, p.y);
+          lastClick = { x: p.x, y: p.y };
           note = `→ campo en (${p.x},${p.y}) vía ${p.via}`;
         }
         await client.typeText(text, action.clear_first !== false);
@@ -386,7 +411,9 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
       }
 
       const tPlan = Date.now();
-      const step = await router.decideAction({
+      let step: Awaited<ReturnType<typeof router.decideAction>>;
+      try {
+        step = await router.decideAction({
         systemPrompt: SYSTEM_PROMPT,
         taskInstruction: task.tarea,
         screenshotPng: screenshot,
@@ -397,6 +424,20 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         screenText,
         abortSignal: signal,
       });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (signal.aborted || /abortad/i.test(msg)) throw e;
+        // Respuesta inválida o error de red del planificador: se anota y se vuelve a intentar en el siguiente paso.
+        trace(`Paso ${currentStep} planificador falló: ${msg.slice(0, 160)}`);
+        history.push('(el planificador devolvió una respuesta inválida; responde con el formato JSON exacto)');
+        consecutiveNoChange++;
+        if (consecutiveNoChange >= MAX_NO_CHANGE_STEPS) {
+          globalTaskStore.finalizeTask(task.id, 'fallida', `El modelo no devolvió acciones válidas de forma repetida. Últimas acciones: ${history.slice(-3).join(' | ')}`);
+          break;
+        }
+        await sleep(500);
+        continue;
+      }
       globalTaskStore.addCost(task.id, step.costUsd);
       if (!active()) break;
 

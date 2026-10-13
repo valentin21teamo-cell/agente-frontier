@@ -74,6 +74,33 @@ export function parseLooseJson(content: string): unknown {
 }
 
 /** Normaliza la respuesta del planificador: lote {acciones:[...]}, acción suelta {action} o lista. */
+const ACTION_ALIASES: Record<string, AgentActionType> = {
+  click: 'click', clic: 'click', 'hacer_clic': 'click', pulsar: 'click', presionar_boton: 'click',
+  double_click: 'double_click', doble_clic: 'double_click', doubleclick: 'double_click', dblclick: 'double_click',
+  move: 'move', mover: 'move', hover: 'move',
+  type_text: 'type_text', type: 'type_text', escribir: 'type_text', write: 'type_text', input: 'type_text', typetext: 'type_text',
+  press_key: 'press_key', key: 'press_key', tecla: 'press_key', presionar_tecla: 'press_key', presskey: 'press_key',
+  key_combo: 'key_combo', atajo: 'key_combo', hotkey: 'key_combo', combo: 'key_combo',
+  scroll: 'scroll', desplazar: 'scroll',
+  wait: 'wait', esperar: 'wait',
+  finish: 'finish', finalizar: 'finish', terminar: 'finish', done: 'finish',
+  fail: 'fail', fallar: 'fail', fallida: 'fail', error: 'fail',
+};
+
+function normalizeAction(a: Record<string, unknown>): AgentAction | null {
+  const raw = a.action ?? a.accion ?? a['acción'] ?? a.tipo ?? a.type;
+  if (typeof raw !== 'string') return null;
+  const key = raw.toLowerCase().trim().replace(/[\s-]+/g, '_');
+  const action = ACTION_ALIASES[key];
+  if (!action) return null;
+  const out = { ...a, action } as AgentAction;
+  if (out.action === 'type_text' && typeof out.text !== 'string' && typeof (a as any).texto_a_escribir === 'string') {
+    out.text = (a as any).texto_a_escribir;
+  }
+  return out;
+}
+
+/** Normaliza la respuesta del planificador: lote {acciones:[...]}, acción suelta, objeto en "accion" o lista. */
 export function parsePlan(content: string): PlannerPlan {
   const parsed = parseLooseJson(content);
   let pensamiento: string | undefined;
@@ -83,15 +110,17 @@ export function parsePlan(content: string): PlannerPlan {
     list = parsed;
   } else if (parsed && typeof parsed === 'object') {
     const obj = parsed as Record<string, unknown>;
-    pensamiento = typeof obj.pensamiento === 'string' ? obj.pensamiento : undefined;
-    if (Array.isArray(obj.acciones)) list = obj.acciones;
-    else if (Array.isArray(obj.actions)) list = obj.actions;
-    else if (typeof obj.action === 'string') list = [obj];
+    pensamiento = typeof obj.pensamiento === 'string' ? obj.pensamiento : typeof obj.thought === 'string' ? obj.thought : undefined;
+    const container = obj.acciones ?? obj.actions ?? obj.accion ?? obj['acción'];
+    if (Array.isArray(container)) list = container;
+    else if (container && typeof container === 'object') list = [container];
+    else if (typeof obj.action === 'string' || typeof obj.tipo === 'string') list = [obj];
   }
 
   const acciones = list
-    .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object' && typeof (a as any).action === 'string')
-    .map((a) => ({ ...a, action: String(a.action).toLowerCase().trim() }) as AgentAction);
+    .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
+    .map((a) => normalizeAction(a))
+    .filter((a): a is AgentAction => a !== null);
 
   if (acciones.length === 0) {
     throw new Error('La respuesta del modelo no contiene acciones válidas');
@@ -271,11 +300,14 @@ export class OpenRouterClient implements VisionJsonCaller {
     let lastErr: Error | null = null;
     let totalCost = 0;
     // Hasta 2 intentos si el JSON no se puede interpretar.
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
       const { content, costUsd } = await this.callVision({
         model: this.modelId,
         systemPrompt: params.systemPrompt,
-        text,
+        text:
+          i === 0
+            ? text
+            : text + '\n\nATENCIÓN: tu respuesta anterior no era válida. Responde SOLO {"pensamiento":"...","acciones":[{"action":"click", ...}]} usando exactamente los nombres de acción de la lista.',
         imagePng: params.screenshotPng,
         abortSignal: params.abortSignal,
       });
@@ -284,7 +316,7 @@ export class OpenRouterClient implements VisionJsonCaller {
         return { plan: parsePlan(content), costUsd: totalCost, rawResponse: content };
       } catch (e) {
         lastErr = e instanceof Error ? e : new Error(String(e));
-        safeLogger.warn(`[OpenRouter] Respuesta del planificador no interpretable (intento ${i + 1}/2)`);
+        safeLogger.warn(`[OpenRouter] Respuesta del planificador no interpretable (intento ${i + 1}/3)`);
       }
     }
     throw lastErr || new Error('El planificador no devolvió acciones válidas');

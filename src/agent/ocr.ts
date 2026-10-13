@@ -61,13 +61,18 @@ export async function ocrAvailable(): Promise<string | null> {
  * Escala de grises ampliada (bilineal) en formato PGM (sin compresión: escribirlo es casi instantáneo y no
  * bloquea el servidor). mode "light" binariza el texto claro y lo deja negro sobre blanco.
  */
-export function preprocess(pngBuf: Buffer, scale: number, mode: 'gray' | 'light'): Buffer {
+export function preprocess(pngBuf: Buffer, scale: number, mode: 'gray' | 'light', region?: Rect): Buffer {
   const src = PNG.sync.read(pngBuf);
-  const W = src.width;
-  const H = src.height;
+  const rx = region ? Math.max(0, Math.min(src.width - 1, Math.round(region.x))) : 0;
+  const ry = region ? Math.max(0, Math.min(src.height - 1, Math.round(region.y))) : 0;
+  const W = region ? Math.max(1, Math.min(src.width - rx, Math.round(region.w))) : src.width;
+  const H = region ? Math.max(1, Math.min(src.height - ry, Math.round(region.h))) : src.height;
   const lum = new Float32Array(W * H);
-  for (let i = 0; i < W * H; i++) {
-    lum[i] = 0.299 * src.data[i * 4] + 0.587 * src.data[i * 4 + 1] + 0.114 * src.data[i * 4 + 2];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = ((ry + y) * src.width + (rx + x)) * 4;
+      lum[y * W + x] = 0.299 * src.data[i] + 0.587 * src.data[i + 1] + 0.114 * src.data[i + 2];
+    }
   }
   const OW = W * scale;
   const OH = H * scale;
@@ -200,6 +205,40 @@ async function runOcr(pngBuf: Buffer, lang: string): Promise<OcrWord[]> {
   return results.flat();
 }
 
+/**
+ * OCR de una zona ampliada x3 (texto pequeño o en menús flotantes que el OCR de pantalla completa no leyó).
+ * Las coordenadas se devuelven en píxeles de la pantalla.
+ */
+export async function ocrRegion(pngBuf: Buffer, region: Rect, scale = 3): Promise<OcrWord[]> {
+  const lang = await ocrAvailable();
+  if (!lang) return [];
+  const tmp = os.tmpdir();
+  const variants: Array<{ id: string; mode: 'gray' | 'light'; psm: string }> = [
+    { id: 'ZA', mode: 'gray', psm: '6' },
+    { id: 'ZC', mode: 'light', psm: '6' },
+  ];
+  const results = await Promise.all(
+    variants.map(async (v) => {
+      const file = path.join(tmp, `ocrz-${randomUUID()}.pgm`);
+      if (!(await acquireProc(8000))) return [] as OcrWord[];
+      try {
+        fs.writeFileSync(file, preprocess(pngBuf, scale, v.mode, region));
+        const tsv = await run('tesseract', [file, 'stdout', '-l', lang, '--psm', v.psm, 'tsv'], 12000);
+        return parseTsv(tsv, scale, v.id).map((w) => ({
+          ...w,
+          box: { x: w.box.x + region.x, y: w.box.y + region.y, w: w.box.w, h: w.box.h },
+        }));
+      } catch {
+        return [] as OcrWord[];
+      } finally {
+        releaseProc();
+        fs.rm(file, { force: true }, () => {});
+      }
+    })
+  );
+  return results.flat();
+}
+
 export function normalizeText(s: string): string {
   return s
     .normalize('NFD')
@@ -303,9 +342,9 @@ export function extractTargetText(objetivo?: string, texto?: string): string | n
 }
 
 /**
- * Busca la caja de entrada asociada a una etiqueta: primero a la derecha (misma fila), luego debajo.
- * Una caja se reconoce por un borde vertical (u horizontal) seguido de relleno claro, confirmado por los
- * bordes perpendiculares a pocos píxeles. Funciona aunque el campo ya tenga texto. Devuelve un punto dentro o null.
+ * Busca la caja de entrada asociada a una etiqueta, a la derecha (misma fila) y debajo, y devuelve la más cercana.
+ * Una caja se confirma por un borde superior e inferior RECTOS y continuos de al menos 50 px (las letras de un
+ * texto vecino no forman líneas así) y una altura de 14 a 48 px. Funciona aunque el campo ya tenga texto.
  */
 export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y: number } | null {
   const png = PNG.sync.read(pngBuf);
@@ -315,45 +354,64 @@ export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y:
     const i = (Math.min(H - 1, Math.max(0, y)) * W + Math.min(W - 1, Math.max(0, x))) * 4;
     return 0.299 * png.data[i] + 0.587 * png.data[i + 1] + 0.114 * png.data[i + 2];
   };
-  const light = (x: number, y: number) => L(x, y) > 200;
-  const edgeV = (x: number, y: number) => Math.abs(L(x, y) - L(x - 1, y)) >= 20 || Math.abs(L(x + 1, y) - L(x, y)) >= 20;
-  const edgeH = (x: number, y: number) => Math.abs(L(x, y) - L(x, y - 1)) >= 20 || Math.abs(L(x, y + 1) - L(x, y)) >= 20;
-  const cy = Math.round(label.y + label.h / 2);
-
-  // A la derecha: borde vertical + 6 px claros + bordes superior e inferior a 4..22 px.
-  for (let x = Math.round(label.x + label.w + 3); x < Math.min(W - 30, label.x + label.w + 520); x++) {
-    if (!edgeV(x, cy)) continue;
-    let pad = true;
-    for (let k = 2; k <= 7; k++) if (!light(x + k, cy)) pad = false;
-    if (!pad) continue;
+  const edgeH = (x: number, y: number) => Math.abs(L(x, y) - L(x, y - 1)) >= 18 || Math.abs(L(x, y + 1) - L(x, y)) >= 18;
+  const edgeV = (x: number, y: number) => Math.abs(L(x, y) - L(x - 1, y)) >= 18 || Math.abs(L(x + 1, y) - L(x, y)) >= 18;
+  /** ¿Hay una línea horizontal continua en y (±1) desde x0 a lo largo de len px? */
+  const hLine = (x0: number, y: number, len: number) => {
+    let hits = 0;
+    let total = 0;
+    for (let k = 0; k <= len; k += 3) {
+      total++;
+      if (edgeH(x0 + k, y) || edgeH(x0 + k, y - 1) || edgeH(x0 + k, y + 1)) hits++;
+    }
+    return hits / total >= 0.85;
+  };
+  /** Dado un punto que está dentro de una posible caja, busca sus bordes superior e inferior rectos. */
+  const boxAround = (x: number, y: number): { top: number; bottom: number } | null => {
     let top = -1;
     let bottom = -1;
-    for (let d = 4; d <= 22; d++) {
-      if (top < 0 && edgeH(x + 5, cy - d)) top = cy - d;
-      if (bottom < 0 && edgeH(x + 5, cy + d)) bottom = cy + d;
+    for (let d = 2; d <= 26; d++) {
+      if (top < 0 && y - d > 0 && edgeH(x, y - d) && hLine(x, y - d, 50)) top = y - d;
+      if (bottom < 0 && y + d < H - 1 && edgeH(x, y + d) && hLine(x, y + d, 50)) bottom = y + d;
     }
-    if (top >= 0 && bottom >= 0 && bottom - top >= 12 && bottom - top <= 60) {
-      return { x: x + 25, y: Math.round((top + bottom) / 2) };
+    if (top < 0 || bottom < 0) return null;
+    const h = bottom - top;
+    return h >= 14 && h <= 48 ? { top, bottom } : null;
+  };
+
+  const lcx = label.x + label.w / 2;
+  const lcy = label.y + label.h / 2;
+  const candidates: Array<{ x: number; y: number; d: number }> = [];
+
+  // A la derecha, en la fila de la etiqueta: primer borde vertical que abre una caja confirmada.
+  const cy = Math.round(lcy);
+  for (let x = Math.round(label.x + label.w + 3); x < Math.min(W - 60, label.x + label.w + 420); x++) {
+    if (!edgeV(x, cy)) continue;
+    const box = boxAround(x + 6, cy);
+    if (box) {
+      const px = x + 25;
+      const py = Math.round((box.top + box.bottom) / 2);
+      candidates.push({ x: px, y: py, d: Math.hypot(px - lcx, py - lcy) });
+      break;
     }
   }
 
-  // Debajo: borde horizontal + 5 px claros + borde izquierdo o derecho cerca.
-  const sx = Math.round(label.x + Math.min(20, label.w / 2));
-  for (let y = Math.round(label.y + label.h + 2); y < Math.min(H - 12, label.y + label.h + 50); y++) {
-    if (!edgeH(sx, y)) continue;
-    let pad = true;
-    for (let k = 2; k <= 6; k++) if (!light(sx, y + k)) pad = false;
-    if (!pad) continue;
-    let bottom = -1;
-    for (let d = 10; d <= 50; d++) {
-      if (edgeH(sx, y + d)) {
-        bottom = y + d;
-        break;
-      }
+  // Debajo de la etiqueta: borde superior recto y caja confirmada.
+  const sx = Math.round(label.x + Math.min(12, label.w / 3));
+  for (let y = Math.round(label.y + label.h + 1); y < Math.min(H - 16, label.y + label.h + 45); y++) {
+    if (!edgeH(sx, y) || !hLine(sx, y, 50)) continue;
+    const box = boxAround(sx + 8, y + 8);
+    if (box) {
+      const px = sx + 25;
+      const py = Math.round((box.top + box.bottom) / 2);
+      candidates.push({ x: px, y: py, d: Math.hypot(px - lcx, py - lcy) });
+      break;
     }
-    if (bottom > 0) return { x: sx + 20, y: Math.round((y + bottom) / 2) };
   }
-  return null;
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => a.d - b.d);
+  return { x: candidates[0].x, y: candidates[0].y };
 }
 
 /**
