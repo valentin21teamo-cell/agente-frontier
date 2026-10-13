@@ -366,6 +366,75 @@ export class TaskStore {
     };
   }
 
+  /** Lista pública (sanitizada) de las tareas más recientes, para el panel. */
+  public listTasksPublic(limit = 50): Array<{
+    id: string;
+    tarea: string;
+    estado: TaskStatus;
+    resumen: string;
+    pasos: number;
+    costo_usd: number;
+    creada: string;
+    segundos: number;
+    capturas: number;
+  }> {
+    const now = Date.now();
+    return [...this.tasks.values()]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, Math.max(1, Math.min(200, limit)))
+      .map((t) => ({
+        id: t.id,
+        tarea: sanitize(t.tarea, t.desktop.password),
+        estado: t.estado,
+        resumen: sanitize(t.resumen, t.desktop.password),
+        pasos: t.stepCount,
+        costo_usd: Number(t.costUsd.toFixed(5)),
+        creada: new Date(t.createdAt).toISOString(),
+        segundos: Math.round(((t.finishedAt ?? now) - t.createdAt) / 1000),
+        capturas: t.shots?.length ?? 0,
+      }));
+  }
+
+  /**
+   * Métricas operativas desde que arrancó la instancia (en memoria: se reinician con cada despliegue).
+   * "terminada" significa que el agente dio la tarea por cumplida, NO que esté verificada como correcta:
+   * la exactitud solo la mide el banco de pruebas contra el escritorio real.
+   */
+  public metrics(): {
+    total: number;
+    en_curso: number;
+    terminadas: number;
+    fallidas: number;
+    tasa_terminacion: number | null;
+    segundos_promedio: number | null;
+    segundos_p95: number | null;
+    pasos_promedio: number | null;
+    costo_total_usd: number;
+    costo_promedio_usd: number | null;
+    uptime_segundos: number;
+  } {
+    const all = [...this.tasks.values()];
+    const done = all.filter((t) => t.estado !== 'en_curso' && t.finishedAt);
+    const durs = done.map((t) => (t.finishedAt! - t.createdAt) / 1000).sort((a, b) => a - b);
+    const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+    const terminadas = done.filter((t) => t.estado === 'terminada').length;
+    const costoTotal = all.reduce((a, t) => a + t.costUsd, 0);
+    const round = (v: number | null, d = 1) => (v === null ? null : Number(v.toFixed(d)));
+    return {
+      total: all.length,
+      en_curso: all.length - done.length,
+      terminadas,
+      fallidas: done.length - terminadas,
+      tasa_terminacion: done.length ? round(terminadas / done.length, 3) : null,
+      segundos_promedio: round(avg(durs)),
+      segundos_p95: durs.length ? round(durs[Math.min(durs.length - 1, Math.floor(durs.length * 0.95))]) : null,
+      pasos_promedio: round(avg(done.map((t) => t.stepCount))),
+      costo_total_usd: Number(costoTotal.toFixed(5)),
+      costo_promedio_usd: done.length ? Number((done.reduce((a, t) => a + t.costUsd, 0) / done.length).toFixed(5)) : null,
+      uptime_segundos: Math.floor(process.uptime()),
+    };
+  }
+
   /**
    * Internal lookup for worker loop.
    */

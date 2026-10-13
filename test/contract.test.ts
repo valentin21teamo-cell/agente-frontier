@@ -143,7 +143,7 @@ test('HTTP Contract - "/" and "/status" do not leak tasks, summaries, or secrets
     const resRoot = await fetch(`${baseUrl}/`);
     assert.equal(resRoot.status, 200);
     const bodyRoot = await resRoot.json();
-    assert.deepEqual(Object.keys(bodyRoot).sort(), ['health_endpoint', 'service', 'status']);
+    assert.deepEqual(Object.keys(bodyRoot).sort(), ['health_endpoint', 'panel', 'service', 'status']);
     assert.ok(!('tasks' in bodyRoot));
     assert.ok(!('env' in bodyRoot));
 
@@ -381,5 +381,50 @@ test('HTTP Contract - When MODEL_ID is missing, server stays up with /health 200
     else delete process.env.REQUIRE_EXPLICIT_MODEL;
     await stopTestServer(server);
     globalTaskStore.clearForTesting();
+  }
+});
+
+test('Panel - /panel sirve HTML sin auth; /tasks (lista), /metrics y /benchmark exigen token', async () => {
+  const { server, baseUrl } = await startTestServer();
+  try {
+    const html = await fetch(`${baseUrl}/panel`);
+    assert.equal(html.status, 200);
+    assert.match(html.headers.get('content-type') || '', /text\/html/);
+    const body = await html.text();
+    assert.ok(body.includes('<title>Panel del agente</title>'));
+    assert.ok(!body.includes(TEST_TOKEN), 'el HTML no lleva el token');
+
+    for (const p of ['/tasks', '/metrics', '/benchmark']) {
+      const r = await fetch(`${baseUrl}${p}`);
+      assert.equal(r.status, 401, `${p} sin token debe dar 401`);
+    }
+    const auth = { Authorization: `Bearer ${TEST_TOKEN}` };
+    const m = await (await fetch(`${baseUrl}/metrics`, { headers: auth })).json();
+    for (const k of ['total', 'en_curso', 'terminadas', 'fallidas', 'costo_total_usd', 'version']) assert.ok(k in m, `falta ${k}`);
+    const l = await (await fetch(`${baseUrl}/tasks`, { headers: auth })).json();
+    assert.ok(Array.isArray(l.tareas));
+    const b = await (await fetch(`${baseUrl}/benchmark`, { headers: auth })).json();
+    assert.ok(Array.isArray(b.filas));
+  } finally {
+    await stopTestServer(server);
+  }
+});
+
+test('Panel - la lista de tareas no expone la contraseña del escritorio', async () => {
+  const { server, baseUrl } = await startTestServer();
+  try {
+    const auth = { Authorization: `Bearer ${TEST_TOKEN}`, 'Content-Type': 'application/json' };
+    const secret = 'clave-vnc-secreta-987';
+    const r = await fetch(`${baseUrl}/tasks`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ tarea: `Prueba con ${secret} en el texto`, escritorio: { url: 'ws://127.0.0.1:1', password: secret } }),
+    });
+    assert.equal(r.status, 200);
+    const txt = await (await fetch(`${baseUrl}/tasks`, { headers: auth })).text();
+    assert.ok(!txt.includes(secret), 'la contraseña no debe aparecer en la lista');
+  } finally {
+    globalTaskStore.clearForTesting();
+    await stopTestServer(server);
   }
 });

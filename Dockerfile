@@ -7,6 +7,7 @@ RUN apt-get update \
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY src ./src
+COPY resultados ./resultados
 COPY tsconfig.json ./
 ENV NODE_ENV=production
 EXPOSE 3000

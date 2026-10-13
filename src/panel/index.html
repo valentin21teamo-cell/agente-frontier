@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel del agente</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #f4f5f7; --surface: #ffffff; --surface-2: #f0f2f5; --border: #dde1e7;
+    --text: #1b1f24; --muted: #5d6673; --accent: #2f5d46; --accent-ink: #ffffff;
+    --ok: #1f7a4d; --ok-bg: #e3f3ea; --bad: #b4372f; --bad-bg: #fbe7e5; --run: #8a5a00; --run-bg: #fff3d6;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12161b; --surface: #1a2027; --surface-2: #222a33; --border: #2e3843;
+      --text: #e6eaef; --muted: #9aa5b1; --accent: #5fae86; --accent-ink: #0d1410;
+      --ok: #6fd19c; --ok-bg: #173325; --bad: #ff8a80; --bad-bg: #3a1c1a; --run: #f2c14e; --run-bg: #3a2f12;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12161b; --surface: #1a2027; --surface-2: #222a33; --border: #2e3843;
+    --text: #e6eaef; --muted: #9aa5b1; --accent: #5fae86; --accent-ink: #0d1410;
+    --ok: #6fd19c; --ok-bg: #173325; --bad: #ff8a80; --bad-bg: #3a1c1a; --run: #f2c14e; --run-bg: #3a2f12;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--border); }
+  @media (max-width: 600px) { header { position: static; } }
+  .bar { max-width: 1280px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .brand { font-weight: 700; letter-spacing: .2px; margin-right: 8px; }
+  .brand small { font-weight: 500; color: var(--muted); margin-left: 6px; }
+  nav { display: flex; gap: 4px; }
+  nav button { background: none; border: 0; padding: 8px 12px; border-radius: 8px; color: var(--muted); font: inherit; cursor: pointer; }
+  nav button[aria-selected="true"] { background: var(--surface-2); color: var(--text); font-weight: 600; }
+  .spacer { flex: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; font-size: 12px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+  input, textarea, select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; width: 100%; }
+  textarea { resize: vertical; min-height: 70px; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px; padding: 9px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.ghost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; font: inherit; cursor: pointer; }
+  button:disabled { opacity: .55; cursor: default; }
+  main { max-width: 1280px; margin: 0 auto; padding: 16px; }
+  .grid { display: grid; gap: 16px; }
+  .kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; min-width: 0; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  .kpi .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi .s { color: var(--muted); font-size: 12px; }
+  .cols { grid-template-columns: minmax(0, 380px) minmax(0, 1fr); align-items: start; }
+  @media (max-width: 900px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover, tbody tr.sel { background: var(--surface-2); }
+  .scroll { overflow-x: auto; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .b-terminada, .b-ok { background: var(--ok-bg); color: var(--ok); }
+  .b-fallida, .b-bad { background: var(--bad-bg); color: var(--bad); }
+  .b-en_curso { background: var(--run-bg); color: var(--run); }
+  .muted { color: var(--muted); }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .trunc { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .viewer { display: grid; gap: 10px; }
+  .shot { width: 100%; aspect-ratio: 1280 / 800; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; object-fit: contain; display: block; }
+  .strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+  .strip button { flex: 0 0 auto; border: 1px solid var(--border); background: var(--surface-2); border-radius: 6px; padding: 4px 9px; font: inherit; font-size: 12px; cursor: pointer; color: var(--text); }
+  .strip button[aria-current="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  pre.trace { margin: 0; max-height: 360px; overflow: auto; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
+  .resumen { white-space: pre-wrap; background: var(--surface-2); border-radius: 8px; padding: 10px; border: 1px solid var(--border); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .hide { display: none !important; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .err { color: var(--bad); font-size: 13px; margin-top: 8px; }
+  .bars { display: grid; gap: 8px; }
+  .barrow { display: grid; grid-template-columns: 48px 1fr 70px; gap: 10px; align-items: center; font-variant-numeric: tabular-nums; }
+  .track { height: 14px; background: var(--surface-2); border-radius: 7px; overflow: hidden; border: 1px solid var(--border); }
+  .fill { height: 100%; background: var(--accent); }
+  svg text { fill: var(--muted); font-size: 11px; }
+  .empty { padding: 24px; text-align: center; color: var(--muted); }
+  .login { max-width: 460px; margin: 60px auto; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="brand">Agente SIGECOM <small>panel de operación</small></div>
+    <nav role="tablist">
+      <button role="tab" data-tab="op" aria-selected="true">Operación</button>
+      <button role="tab" data-tab="bench" aria-selected="false">Banco de pruebas</button>
+    </nav>
+    <div class="spacer"></div>
+    <span class="pill" id="health"><span class="dot"></span><span>conectando…</span></span>
+    <button class="ghost" id="logout" title="Olvidar el token en este navegador">Salir</button>
+  </div>
+</header>
+
+<main>
+  <section id="login" class="card login hide">
+    <h2>Acceso</h2>
+    <p class="muted">El panel usa el mismo token del equipo que exige la API. Se guarda solo en este navegador.</p>
+    <form id="loginForm">
+      <input type="text" name="username" value="equipo" autocomplete="username" class="hide" aria-hidden="true">
+      <label for="tok">Token del equipo</label>
+      <input id="tok" type="password" autocomplete="current-password">
+      <div class="row" style="margin-top:12px"><button class="primary" id="saveTok" type="submit">Entrar</button></div>
+    </form>
+    <div class="err" id="loginErr"></div>
+  </section>
+
+  <section id="tab-op" class="grid">
+    <div class="grid kpis" id="kpis"></div>
+    <div class="note" id="kpiNote">Métricas de esta instancia desde su último arranque. "Terminada" quiere decir que el agente dio la tarea por cumplida, no que esté verificada como correcta. La exactitud se mide en la pestaña Banco de pruebas.</div>
+
+    <div class="grid cols">
+      <div class="grid">
+        <div class="card">
+          <h2>Nueva tarea</h2>
+          <form id="taskForm">
+          <label for="tarea">Instrucción en lenguaje natural</label>
+          <textarea id="tarea" placeholder="Ej.: ¿Cuántas facturas vencidas tiene Ferretería Ruiz?"></textarea>
+          <label for="wsurl">URL del escritorio (ws:// o wss://)</label>
+          <input id="wsurl" autocomplete="off" placeholder="wss://…">
+          <label for="wspass">Contraseña VNC</label>
+          <input id="wspass" type="password" autocomplete="new-password">
+          <div class="row" style="margin-top:12px">
+            <button class="primary" id="send" type="submit">Enviar</button>
+            <span class="muted" id="sendMsg"></span>
+          </div>
+          </form>
+          <div class="note">La URL se recuerda en este navegador; la contraseña no.</div>
+        </div>
+        <div class="card">
+          <h2>Tareas recientes</h2>
+          <div class="scroll">
+            <table>
+              <thead><tr><th>Estado</th><th>Tarea</th><th>Tiempo</th><th>Pasos</th></tr></thead>
+              <tbody id="taskRows"></tbody>
+            </table>
+          </div>
+          <div class="empty hide" id="noTasks">Todavía no hay tareas en esta instancia.</div>
+        </div>
+      </div>
+
+      <div class="card" id="detail">
+        <div class="empty" id="noSel">Elige una tarea para ver sus capturas paso a paso, la bitácora y el resumen.</div>
+        <div id="det" class="grid hide">
+          <div class="row">
+            <span class="badge" id="dEstado"></span>
+            <span class="mono muted" id="dId"></span>
+            <div class="spacer"></div>
+            <span class="pill" id="dStats"></span>
+          </div>
+          <div id="dTarea" style="font-weight:600"></div>
+          <div class="viewer">
+            <img class="shot" id="shot" alt="Captura del escritorio en el paso seleccionado">
+            <div class="strip" id="strip"></div>
+            <div class="note" id="shotNote"></div>
+          </div>
+          <div>
+            <h2>Resumen</h2>
+            <div class="resumen" id="dResumen"></div>
+          </div>
+          <div>
+            <h2>Bitácora</h2>
+            <pre class="trace" id="dTrace"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-bench" class="grid hide">
+    <div class="card">
+      <div class="row">
+        <h2 style="margin:0">Historial del banco de pruebas</h2>
+        <div class="spacer"></div>
+        <label class="ghost" style="margin:0;padding:7px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--text);background:var(--surface-2)">
+          Cargar historial.jsonl
+          <input type="file" id="file" accept=".jsonl,.json,.txt" class="hide">
+        </label>
+      </div>
+      <div class="note">Cada fila es una prueba corrida con <span class="mono">scripts/run-test.ts</span> contra el escritorio real. Para que cuente como aprobada tiene que dar el estado esperado, pasar <span class="mono">/__check</span> y tener un resumen válido (respuesta correcta, claves de razón y sin secretos).</div>
+    </div>
+    <div class="grid kpis" id="bKpis"></div>
+    <div class="grid cols">
+      <div class="card">
+        <h2>Tasa de éxito por prueba</h2>
+        <div class="row" style="margin-bottom:10px">
+          <label for="ver" style="margin:0">Versión</label>
+          <select id="ver" style="width:auto"></select>
+        </div>
+        <div class="bars" id="bBars"></div>
+      </div>
+      <div class="card">
+        <h2>Evolución por versión</h2>
+        <div id="bTrend"></div>
+        <div class="note">Porcentaje de pruebas aprobadas por versión desplegada, en orden de fecha.</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Corridas</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Fecha</th><th>Versión</th><th>Prueba</th><th>Resultado</th><th>Pasos</th><th>Tiempo</th><th>Costo</th><th>Motivo / resumen</th></tr></thead>
+          <tbody id="bRows"></tbody>
+        </table>
+      </div>
+      <div class="empty hide" id="noBench">Sin historial. Corre el banco de pruebas y carga el archivo <span class="mono">resultados/historial.jsonl</span>.</div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} },
+  };
+  let token = store.get('agente.token') || '';
+  let selected = null;       // id de la tarea seleccionada
+  let shotIdx = 0;           // paso mostrado (1..n); 0 = seguir el último
+  let shotTotal = 0;
+  let shotUrl = null;
+  let benchRows = [];
+
+  const fmtS = (s) => (s == null ? '—' : s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`);
+  const fmtUsd = (v) => (v == null ? '—' : `US$ ${Number(v).toFixed(4)}`);
+  const pct = (v) => (v == null ? '—' : `${Math.round(v * 100)} %`);
+  const el = (tag, props = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+      if (k === 'class') n.className = v; else if (k === 'text') n.textContent = v; else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null) n.append(c);
+    return n;
+  };
+
+  async function api(path, opts = {}) {
+    const res = await fetch(path, { ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${token}` } });
+    if (res.status === 401 || res.status === 403) { showLogin('Token inválido.'); throw new Error('auth'); }
+    return res;
+  }
+
+  // ---------- acceso ----------
+  function showLogin(msg = '') {
+    $('login').classList.remove('hide');
+    $('tab-op').classList.add('hide');
+    $('tab-bench').classList.add('hide');
+    $('loginErr').textContent = msg;
+  }
+  async function tryLogin() {
+    const r = await fetch('/metrics', { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+    if (!r || !r.ok) { showLogin(token ? 'No se pudo validar el token.' : ''); return false; }
+    $('login').classList.add('hide');
+    switchTab(store.get('agente.tab') || 'op');
+    return true;
+  }
+  $('loginForm').onsubmit = async (e) => { e.preventDefault(); token = $('tok').value.trim(); store.set('agente.token', token); if (await tryLogin()) refresh(); };
+  $('logout').onclick = () => { token = ''; store.del('agente.token'); showLogin(); };
+
+  // ---------- pestañas ----------
+  function switchTab(t) {
+    store.set('agente.tab', t);
+    document.querySelectorAll('nav button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
+    $('tab-op').classList.toggle('hide', t !== 'op');
+    $('tab-bench').classList.toggle('hide', t !== 'bench');
+    if (t === 'bench') loadBench();
+  }
+  document.querySelectorAll('nav button').forEach((b) => (b.onclick = () => token && switchTab(b.dataset.tab)));
+
+  // ---------- salud ----------
+  async function health() {
+    try {
+      const r = await fetch('/health');
+      const j = await r.json();
+      $('health').replaceChildren(el('span', { class: 'dot ok' }), el('span', { text: `en línea · ${j.version || ''}` }));
+    } catch {
+      $('health').replaceChildren(el('span', { class: 'dot bad' }), el('span', { text: 'sin conexión' }));
+    }
+  }
+
+  // ---------- operación ----------
+  function kpi(label, value, sub) {
+    return el('div', { class: 'card kpi' }, el('h2', { text: label }), el('div', { class: 'v', text: value }), sub ? el('div', { class: 's', text: sub }) : null);
+  }
+  async function loadMetrics() {
+    const m = await (await api('/metrics')).json();
+    $('kpis').replaceChildren(
+      kpi('Tareas', String(m.total), `${m.en_curso} en curso`),
+      kpi('Terminadas / fallidas', `${m.terminadas} / ${m.fallidas}`, `tasa de terminación ${pct(m.tasa_terminacion)}`),
+      kpi('Tiempo por tarea', fmtS(m.segundos_promedio), `p95 ${fmtS(m.segundos_p95)} · límite 300 s`),
+      kpi('Pasos por tarea', m.pasos_promedio == null ? '—' : String(m.pasos_promedio), 'promedio de las terminadas y fallidas'),
+      kpi('Costo del modelo', fmtUsd(m.costo_total_usd), `promedio ${fmtUsd(m.costo_promedio_usd)} por tarea`),
+      kpi('Instancia', fmtS(m.uptime_segundos), `${m.modelo || 'sin modelo'}`),
+    );
+  }
+  async function loadTasks() {
+    const { tareas } = await (await api('/tasks?limit=50')).json();
+    $('noTasks').classList.toggle('hide', tareas.length > 0);
+    $('taskRows').replaceChildren(...tareas.map((t) => {
+      const tr = el('tr', { class: t.id === selected ? 'sel' : '' },
+        el('td', {}, el('span', { class: `badge b-${t.estado}`, text: t.estado.replace('_', ' ') })),
+        el('td', {}, el('div', { class: 'trunc', text: t.tarea, title: t.tarea })),
+        el('td', { text: fmtS(t.segundos) }),
+        el('td', { text: String(t.pasos) }),
+      );
+      tr.onclick = () => select(t.id);
+      return tr;
+    }));
+  }
+  async function select(id) {
+    if (selected !== id) { selected = id; shotIdx = 0; shotTotal = 0; }
+    $('noSel').classList.add('hide');
+    $('det').classList.remove('hide');
+    document.querySelectorAll('#taskRows tr').forEach((r) => r.classList.remove('sel'));
+    await loadDetail();
+    loadTasks().catch(() => {});
+  }
+  async function loadDetail() {
+    if (!selected) return;
+    const id = selected;
+    const [st, tr, sh, list] = await Promise.all([
+      api(`/tasks/${id}`).then((r) => r.json()),
+      api(`/tasks/${id}/trace`).then((r) => (r.ok ? r.json() : { trace: [] })),
+      api(`/tasks/${id}/shots/0`).then((r) => (r.ok ? r.json() : { total: 0 })),
+      api('/tasks?limit=200').then((r) => r.json()),
+    ]);
+    if (id !== selected) return;
+    const meta = list.tareas.find((t) => t.id === id);
+    $('dEstado').className = `badge b-${st.estado}`;
+    $('dEstado').textContent = st.estado.replace('_', ' ');
+    $('dId').textContent = id.slice(0, 8);
+    $('dStats').textContent = `${fmtS(meta?.segundos)} · ${st.pasos ?? 0} pasos · ${fmtUsd(st.costo_usd)}`;
+    $('dTarea').textContent = meta?.tarea || '';
+    $('dResumen').textContent = st.resumen || '';
+    const pre = $('dTrace');
+    const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
+    pre.textContent = (tr.trace || []).join('\n') || '(sin bitácora)';
+    if (atBottom) pre.scrollTop = pre.scrollHeight;
+
+    shotTotal = sh.total || 0;
+    const strip = $('strip');
+    strip.replaceChildren(...Array.from({ length: shotTotal }, (_, i) => {
+      const b = el('button', { text: `Paso ${i + 1}` });
+      b.onclick = () => { shotIdx = i + 1; showShot(); };
+      return b;
+    }));
+    $('shotNote').textContent = shotTotal ? '' : 'Sin capturas: la tarea aún no empieza o sus capturas ya se liberaron (se guardan 20 min después de terminar).';
+    await showShot();
+  }
+  async function showShot() {
+    const n = shotIdx || shotTotal;
+    document.querySelectorAll('#strip button').forEach((b, i) => b.setAttribute('aria-current', String(i + 1 === n)));
+    $('shot').classList.toggle('hide', !n);
+    if (!n) { $('shot').removeAttribute('src'); return; }
+    const r = await api(`/tasks/${selected}/shots/${n}`);
+    if (!r.ok) return;
+    const url = URL.createObjectURL(await r.blob());
+    $('shot').src = url;
+    if (shotUrl) URL.revokeObjectURL(shotUrl);
+    shotUrl = url;
+    const cur = document.querySelector('#strip button[aria-current="true"]');
+    if (cur && !shotIdx) cur.scrollIntoView({ block: 'nearest', inline: 'end' });
+  }
+
+  $('wsurl').value = store.get('agente.wsurl') || '';
+  $('taskForm').onsubmit = async (ev) => {
+    ev.preventDefault();
+    const tarea = $('tarea').value.trim();
+    const url = $('wsurl').value.trim();
+    const password = $('wspass').value;
+    if (!tarea || !/^wss?:\/\//.test(url)) { $('sendMsg').textContent = 'Falta la instrucción o la URL ws(s)://'; return; }
+    store.set('agente.wsurl', url);
+    $('send').disabled = true; $('sendMsg').textContent = 'Enviando…';
+    try {
+      const r = await api('/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarea, escritorio: { url, password } }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      $('sendMsg').textContent = 'Tarea creada.';
+      await loadTasks();
+      select(j.task_id);
+    } catch (e) {
+      if (e.message !== 'auth') $('sendMsg').textContent = `Error: ${e.message}`;
+    } finally { $('send').disabled = false; }
+  };
+
+  // ---------- banco de pruebas ----------
+  function parseJsonl(text) {
+    return text.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  }
+  async function loadBench() {
+    try {
+      const { filas } = await (await api('/benchmark')).json();
+      if (filas.length && !benchRows.length) { benchRows = filas; newData = true; }
+    } catch {}
+    renderBench();
+  }
+  $('file').onchange = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    benchRows = parseJsonl(await f.text());
+    newData = true;
+    renderBench();
+  };
+  // "agente-frontier-00036-ghi" -> "00036-ghi" (revisión de Cloud Run sin el nombre del servicio)
+  const shortVer = (v) => String(v).replace(/^.*?-(\d{5}-[a-z0-9]+)$/, '$1');
+  let newData = false;
+  function versions(rows) {
+    const first = new Map();
+    for (const r of rows) if (!first.has(r.version) || r.fecha < first.get(r.version)) first.set(r.version, r.fecha);
+    return [...first.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([v]) => v);
+  }
+  function renderBench() {
+    const rows = benchRows.slice().sort((a, b) => b.fecha.localeCompare(a.fecha));
+    $('noBench').classList.toggle('hide', rows.length > 0);
+    const vers = versions(rows);
+    const sel = $('ver');
+    const prev = sel.value;
+    sel.replaceChildren(el('option', { value: '*', text: 'Todas' }), ...vers.slice().reverse().map((v) => el('option', { value: v, text: v })));
+    const keep = !newData && prev && [...sel.options].some((o) => o.value === prev);
+    sel.value = keep ? prev : vers.length ? vers[vers.length - 1] : '*';
+    newData = false;
+    sel.onchange = renderBench;
+    const cur = sel.value === '*' ? rows : rows.filter((r) => r.version === sel.value);
+
+    const ok = cur.filter((r) => r.aprobada).length;
+    const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+    $('bKpis').replaceChildren(
+      kpi('Aprobadas', cur.length ? `${ok} / ${cur.length}` : '—', cur.length ? `${Math.round((ok / cur.length) * 100)} % en ${sel.value === '*' ? 'todas las versiones' : 'esta versión'}` : ''),
+      kpi('Tiempo por prueba', fmtS(avg(cur.map((r) => r.segundos))), 'promedio, incluye reset del escritorio'),
+      kpi('Pasos por prueba', cur.length ? avg(cur.map((r) => r.pasos)).toFixed(1) : '—', 'promedio'),
+      kpi('Costo por prueba', fmtUsd(avg(cur.map((r) => r.costo_usd))), `total ${fmtUsd(cur.reduce((a, r) => a + (r.costo_usd || 0), 0))}`),
+    );
+
+    const byId = new Map();
+    for (const r of cur) { const e = byId.get(r.id) || { ok: 0, n: 0 }; e.n++; if (r.aprobada) e.ok++; byId.set(r.id, e); }
+    $('bBars').replaceChildren(...[...byId.entries()].sort().map(([id, e]) =>
+      el('div', { class: 'barrow' },
+        el('strong', { text: id }),
+        el('div', { class: 'track' }, (() => { const f = el('div', { class: 'fill' }); f.style.width = `${(e.ok / e.n) * 100}%`; return f; })()),
+        el('span', { text: `${e.ok}/${e.n}` }))));
+    if (!byId.size) $('bBars').replaceChildren(el('div', { class: 'empty', text: 'Sin datos' }));
+
+    renderTrend(rows, vers);
+
+    $('bRows').replaceChildren(...cur.slice(0, 300).map((r) => el('tr', {},
+      el('td', { class: 'mono', text: new Date(r.fecha).toLocaleString('es-CO') }),
+      el('td', { class: 'mono', text: r.version }),
+      el('td', { text: r.id }),
+      el('td', {}, el('span', { class: `badge ${r.aprobada ? 'b-ok' : 'b-bad'}`, text: r.aprobada ? 'aprobada' : 'no aprobada' })),
+      el('td', { text: String(r.pasos ?? '—') }),
+      el('td', { text: fmtS(r.segundos) }),
+      el('td', { text: fmtUsd(r.costo_usd) }),
+      el('td', {}, el('div', { class: 'trunc', text: r.motivo || r.resumen || '', title: r.motivo || r.resumen || '' })),
+    )));
+  }
+  function renderTrend(rows, vers) {
+    const box = $('bTrend');
+    if (!vers.length) { box.replaceChildren(el('div', { class: 'empty', text: 'Sin datos' })); return; }
+    const pts = vers.map((v) => { const rs = rows.filter((r) => r.version === v); return { v, p: rs.filter((r) => r.aprobada).length / rs.length, n: rs.length }; });
+    const W = 560, H = 220, L = 36, R = 12, T = 12, B = 46;
+    const x = (i) => (pts.length === 1 ? (L + W - R) / 2 : L + (i * (W - L - R)) / (pts.length - 1));
+    const y = (p) => T + (1 - p) * (H - T - B);
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('width', '100%'); svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'Porcentaje de pruebas aprobadas por versión');
+    const add = (tag, attrs, text) => { const n = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (text != null) n.textContent = text; svg.append(n); return n; };
+    for (const g of [0, 0.5, 1]) {
+      add('line', { x1: L, x2: W - R, y1: y(g), y2: y(g), stroke: 'currentColor', 'stroke-opacity': '0.15' });
+      add('text', { x: L - 6, y: y(g) + 4, 'text-anchor': 'end' }, `${g * 100}%`);
+    }
+    add('polyline', { points: pts.map((p, i) => `${x(i)},${y(p.p)}`).join(' '), fill: 'none', stroke: 'var(--accent)', 'stroke-width': '2.5' });
+    pts.forEach((p, i) => {
+      const c = add('circle', { cx: x(i), cy: y(p.p), r: 4.5, fill: 'var(--accent)' });
+      const t = document.createElementNS(ns, 'title'); t.textContent = `${p.v}: ${Math.round(p.p * 100)} % de ${p.n} pruebas`; c.append(t);
+      const anchor = pts.length > 1 && i === 0 ? 'start' : pts.length > 1 && i === pts.length - 1 ? 'end' : 'middle';
+      add('text', { x: x(i), y: H - B + 16, 'text-anchor': anchor }, shortVer(p.v));
+    });
+    svg.style.color = 'var(--text)';
+    box.replaceChildren(svg);
+  }
+
+  // ---------- ciclo de refresco ----------
+  async function refresh() {
+    if (!token || document.hidden) return;
+    try {
+      await Promise.all([loadMetrics(), loadTasks()]);
+      if (selected) await loadDetail();
+    } catch {}
+  }
+  health();
+  setInterval(health, 30000);
+  setInterval(refresh, 4000);
+  if (token) tryLogin().then((ok) => ok && refresh()); else showLogin();
+})();
+</script>
+</body>
+</html>

@@ -9,6 +9,9 @@
 import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 import { timingSafeEqual } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { globalTaskStore, TaskRecord } from './tasks/store.js';
 import { sanitize, safeLogger } from './security/sanitize.js';
 
@@ -162,6 +165,58 @@ app.post('/tasks', requireTeamAuth, (req: Request, res: Response) => {
  * GET /tasks/:task_id
  * Returns current status and sanitized summary.
  */
+/**
+ * GET /tasks  (no es parte del contrato del evaluador; lo usa el panel)
+ * Lista sanitizada de las tareas más recientes de esta instancia.
+ */
+app.get('/tasks', requireTeamAuth, (req: Request, res: Response) => {
+  const limit = Number(req.query.limit) || 50;
+  res.status(200).json({ tareas: globalTaskStore.listTasksPublic(limit) });
+});
+
+/** GET /metrics: métricas operativas de la instancia (en memoria). */
+app.get('/metrics', requireTeamAuth, (_req: Request, res: Response) => {
+  res.status(200).json({
+    ...globalTaskStore.metrics(),
+    version: process.env.K_REVISION || process.env.AGENT_VERSION || 'local',
+    modelo: process.env.MODEL_ID || null,
+  });
+});
+
+/**
+ * GET /benchmark: historial del banco de pruebas (resultados/historial.jsonl) incluido en la imagen.
+ * Cada línea la escribe scripts/run-test.ts contra el escritorio real.
+ */
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+app.get('/benchmark', requireTeamAuth, (_req: Request, res: Response) => {
+  const file = path.join(ROOT_DIR, 'resultados', 'historial.jsonl');
+  if (!fs.existsSync(file)) {
+    res.status(200).json({ filas: [] });
+    return;
+  }
+  const filas = fs
+    .readFileSync(file, 'utf-8')
+    .split('\n')
+    .filter((l) => l.trim())
+    .map((l) => {
+      try {
+        return JSON.parse(l);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .map((r: Record<string, unknown>) => ({ ...r, resumen: sanitize(String(r.resumen ?? '')) }));
+  res.status(200).json({ filas });
+});
+
+/** GET /panel: interfaz web (HTML estático, sin secretos; el token lo escribe el usuario). */
+app.get('/panel', (_req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).send(fs.readFileSync(path.join(ROOT_DIR, 'src', 'panel', 'index.html'), 'utf-8'));
+});
+
 app.get('/tasks/:task_id/shots/:n', requireTeamAuth, (req: Request, res: Response) => {
   const n = Number(req.params.n);
   if (n === 0) {
@@ -204,6 +259,7 @@ app.get('/', (_req: Request, res: Response) => {
     service: 'vnc-autonomous-agent-server',
     status: 'running',
     health_endpoint: '/health',
+    panel: '/panel',
   });
 });
 
