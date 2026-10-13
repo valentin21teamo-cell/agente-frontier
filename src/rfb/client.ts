@@ -512,7 +512,14 @@ export class RfbClient {
    * Executes a double click with proper button release and settling.
    */
   public async mouseDoubleClick(x: number, y: number): Promise<void> {
-    await this.mouseClick(x, y);
+    // Las dos pulsaciones deben ir seguidas (≈0,3 s en total) para que la app lo reconozca como doble clic;
+    // cada pulsación dura 120 ms porque los clics de menos de 100 ms se ignoran.
+    await this.movePath(x, y);
+    await new Promise((r) => setTimeout(r, 200));
+    this.sendPointer(1, x, y);
+    await new Promise((r) => setTimeout(r, 120));
+    this.sendPointer(0, x, y);
+    await new Promise((r) => setTimeout(r, 60));
     this.sendPointer(1, x, y);
     await new Promise((r) => setTimeout(r, 120));
     this.sendPointer(0, x, y);

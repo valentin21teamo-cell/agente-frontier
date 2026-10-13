@@ -236,6 +236,29 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
     console.log('(No se pudo leer la bitácora del agente)');
   }
 
+  // Capturas de cada paso del agente -> debug/<ID>/paso-N.png (para revisar qué vio y dónde hizo clic).
+  try {
+    const head = await fetch(`${AGENT_BASE}/tasks/${taskId}/shots/0`, {
+      headers: { Authorization: `Bearer ${TEAM_TOKEN}` },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (head.ok) {
+      const { total } = (await head.json()) as { total: number };
+      const dir = path.resolve('debug', testCase.id);
+      fs.mkdirSync(dir, { recursive: true });
+      for (let n = 1; n <= total; n++) {
+        const r = await fetch(`${AGENT_BASE}/tasks/${taskId}/shots/${n}`, {
+          headers: { Authorization: `Bearer ${TEAM_TOKEN}` },
+          signal: AbortSignal.timeout(20000),
+        });
+        if (r.ok) fs.writeFileSync(path.join(dir, `paso-${n}.png`), Buffer.from(await r.arrayBuffer()));
+      }
+      console.log(`[Runner] ${total} capturas guardadas en ${dir}`);
+    }
+  } catch {
+    console.log('(No se pudieron descargar las capturas)');
+  }
+
   const durationSec = Math.round((Date.now() - startTime) / 1000);
 
   const steps = finalSteps;

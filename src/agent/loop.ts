@@ -39,7 +39,7 @@ REGLAS:
 11. Si una acción no cambió la pantalla, no la repitas igual: describe mejor el objetivo, usa el teclado (Enter, Tab, Escape) u otra ruta.
 12. Antes de "finish", verifica en la captura ACTUAL la evidencia del cambio (mensaje de confirmación, registro en la lista o valor actualizado). Sin evidencia visible no uses "finish": búscala (por ejemplo, abre la lista o busca el registro). Si el tiempo restante es bajo, prioriza verificar y terminar.
 13. Eficiencia: tienes unos 4 minutos y cada paso tarda varios segundos. Ve directo al módulo correcto, agrupa acciones en lotes, no abras pantallas innecesarias y, en consultas, apenas el dato pedido sea visible termina con "finish".
-14. Conteos y consultas: aplica TODOS los filtros que pide la tarea (por ejemplo cliente Y estado Y fechas) con los controles de filtro de la aplicación y confirma en la captura que la tabla muestra solo esos registros antes de contar. Si hay un contador o paginación ("N registros", "Mostrando 1-20 de N"), usa el total. Si cuentas filas, apóyate en el texto OCR y revisa si hay más páginas o desplazamiento.
+14. Conteos y consultas: aplica TODOS los filtros que pide la tarea (por ejemplo cliente Y estado Y fechas) con los controles de filtro de la aplicación y confirma en la captura que la tabla muestra solo esos registros antes de contar. Si hay un contador o paginación ("N registros", "Mostrando 1-20 de N"), usa el total. Si cuentas filas en varias páginas, escribe en "pensamiento" la suma acumulada de cada página (te vuelve en el historial) y responde con el total de todas las páginas, no solo la última.
 15. Listas desplegables: haz clic en la lista y luego clic en la opción con su texto exacto. Si las opciones no aparecen, con la lista enfocada escribe el texto de la opción (type_text sin objetivo, "clear_first": false) y pulsa Enter.
 16. Campos: para escribir usa type_text con "texto" = la etiqueta del campo; el campo se limpia solo antes de escribir. No envíes type_text con "text" vacío. Escribe las fechas en el formato que muestre el campo o su marcador.`;
 
@@ -387,6 +387,9 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
       }
 
       const screenshot = await client.captureScreenshotPng();
+      if (!task.shots) task.shots = [];
+      if (task.shots.length < 30) task.shots.push(screenshot);
+      globalTaskStore.pruneShots();
       if (isDebugShots) {
         try {
           const dir = path.resolve('debug', task.id);
@@ -442,6 +445,7 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
       if (!active()) break;
 
       const acciones = step.plan.acciones.slice(0, MAX_BATCH);
+      if (step.plan.pensamiento) history.push(`(paso ${currentStep}, tu razonamiento) ${step.plan.pensamiento.slice(0, 220)}`);
       trace(
         `Paso ${currentStep} planificador ${((Date.now() - tPlan) / 1000).toFixed(1)}s: ${acciones
           .map((a) => a.action + (a.texto ? `[${a.texto}]` : a.objetivo ? `(${a.objetivo})` : ''))

@@ -161,6 +161,21 @@ app.post('/tasks', requireTeamAuth, (req: Request, res: Response) => {
  * GET /tasks/:task_id
  * Returns current status and sanitized summary.
  */
+app.get('/tasks/:task_id/shots/:n', requireTeamAuth, (req: Request, res: Response) => {
+  const n = Number(req.params.n);
+  if (n === 0) {
+    res.status(200).json({ total: globalTaskStore.getTaskShotCount(req.params.task_id) });
+    return;
+  }
+  const png = globalTaskStore.getTaskShot(req.params.task_id, n);
+  if (!png) {
+    res.status(404).json({ error: 'Captura no encontrada' });
+    return;
+  }
+  res.setHeader('Content-Type', 'image/png');
+  res.status(200).send(png);
+});
+
 app.get('/tasks/:task_id/trace', requireTeamAuth, (req: Request, res: Response) => {
   const trace = globalTaskStore.getTaskTrace(req.params.task_id);
   if (!trace) {

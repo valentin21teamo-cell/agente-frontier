@@ -29,6 +29,8 @@ export interface TaskRecord {
   cleanupCallbacks: Array<() => Promise<void> | void>;
   /** Bitácora de pasos con tiempos (para diagnóstico; se sanitiza al exponerla). */
   trace?: string[];
+  /** Capturas de cada paso (diagnóstico, máx. 30; se liberan al rato de terminar). */
+  shots?: Buffer[];
 }
 
 export type TaskWorkerRunner = (task: TaskRecord) => Promise<void>;
@@ -320,6 +322,25 @@ export class TaskStore {
     if (!task) return 0;
     task.costUsd += usd;
     return task.costUsd;
+  }
+
+  /** Captura n (1..) de una tarea, para diagnóstico. */
+  public getTaskShot(id: string, n: number): Buffer | null {
+    const task = this.tasks.get(id);
+    if (!task || !task.shots) return null;
+    return task.shots[n - 1] ?? null;
+  }
+
+  public getTaskShotCount(id: string): number {
+    return this.tasks.get(id)?.shots?.length ?? 0;
+  }
+
+  /** Libera capturas de tareas terminadas hace más de 20 minutos (memoria). */
+  public pruneShots(): void {
+    const limit = Date.now() - 20 * 60 * 1000;
+    for (const t of this.tasks.values()) {
+      if (t.shots && t.finishedAt && t.finishedAt < limit) t.shots = undefined;
+    }
   }
 
   /** Bitácora sanitizada de una tarea (diagnóstico). */
