@@ -14,7 +14,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import { safeLogger } from '../src/security/sanitize.js';
-import { globalTaskStore } from '../src/tasks/store.js';
 
 dotenv.config();
 
@@ -48,6 +47,42 @@ export interface RunReport {
   costoUsd: number;
   resumenValido: boolean;
   falloMotivo?: string;
+  /** Aprobada de verdad: estado esperado + /__check sin fallas + resumen válido (respuesta, claves, sin secretos). */
+  aprobada: boolean;
+}
+
+/** Versión del agente que respondió (revisión de Cloud Run o "local"), para que cada medición sea rastreable. */
+async function agentVersion(): Promise<string> {
+  try {
+    const r = await fetch(`${AGENT_BASE}/health`, { signal: AbortSignal.timeout(15000) });
+    const j = (await r.json()) as { version?: string };
+    return j.version || 'desconocida';
+  } catch {
+    return 'sin-respuesta';
+  }
+}
+
+/** Historial acumulado de corridas (una línea JSON por prueba) para medir la tasa de éxito en el tiempo. */
+function appendHistory(rep: RunReport, version: string, ronda: number) {
+  const dir = path.resolve('resultados');
+  fs.mkdirSync(dir, { recursive: true });
+  const row = {
+    fecha: new Date().toISOString(),
+    version,
+    ronda,
+    id: rep.id,
+    aprobada: rep.aprobada,
+    estado: rep.estadoFinal,
+    esperado: rep.estadoEsperado,
+    check: rep.evalResult?.pass ?? null,
+    resumen_valido: rep.resumenValido,
+    pasos: rep.pasos,
+    segundos: rep.duracionSeg,
+    costo_usd: Number(rep.costoUsd.toFixed(4)),
+    motivo: rep.falloMotivo || '',
+    resumen: rep.resumen.slice(0, 300),
+  };
+  fs.appendFileSync(path.join(dir, 'historial.jsonl'), JSON.stringify(row) + '\n');
 }
 
 let sessionTotalCostUsd = 0;
@@ -221,6 +256,9 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
   }
 
   // Bitácora del agente (pasos, tiempos y cómo localizó cada clic) para diagnóstico.
+  const debugDir = path.resolve('debug', testCase.id);
+  fs.rmSync(debugDir, { recursive: true, force: true }); // sin capturas viejas de otra corrida
+  fs.mkdirSync(debugDir, { recursive: true });
   try {
     const tr = await fetch(`${AGENT_BASE}/tasks/${taskId}/trace`, {
       headers: { Authorization: `Bearer ${TEAM_TOKEN}` },
@@ -231,6 +269,7 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
       console.log('\n--- BITÁCORA DEL AGENTE ---');
       for (const l of trace) console.log(l);
       console.log('--- FIN BITÁCORA ---\n');
+      fs.writeFileSync(path.join(debugDir, 'bitacora.txt'), trace.join('\n'));
     }
   } catch {
     console.log('(No se pudo leer la bitácora del agente)');
@@ -244,8 +283,7 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
     });
     if (head.ok) {
       const { total } = (await head.json()) as { total: number };
-      const dir = path.resolve('debug', testCase.id);
-      fs.mkdirSync(dir, { recursive: true });
+      const dir = debugDir;
       for (let n = 1; n <= total; n++) {
         const r = await fetch(`${AGENT_BASE}/tasks/${taskId}/shots/${n}`, {
           headers: { Authorization: `Bearer ${TEAM_TOKEN}` },
@@ -283,8 +321,13 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
     pasos: steps,
     costoUsd: costUsd,
     resumenValido: validation.valid,
-    falloMotivo: validation.errors.join('; '),
+    falloMotivo: [
+      ...validation.errors,
+      ...(evalResult?.pass === false ? [`__check: ${JSON.stringify(evalResult).slice(0, 400)}`] : []),
+    ].join('; '),
+    aprobada: finalStatus === testCase.estado_esperado && evalResult?.pass !== false && validation.valid,
   };
+  fs.writeFileSync(path.join(debugDir, 'resultado.json'), JSON.stringify(report, null, 2));
 
   console.log('\n----------------------------------------------------------------');
   console.log(`REPORTE DE RESULTADOS: ${testCase.id}`);
@@ -294,6 +337,7 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
   console.log(`Resumen: "${finalSummary}"`);
   console.log(`Resultado Evaluador (__check):`, JSON.stringify(evalResult, null, 2));
   console.log(`Validación de Resumen: ${validation.valid ? 'PASS' : `FAIL (${validation.errors.join(', ')})`}`);
+  console.log(`RESULTADO FINAL ${testCase.id}: ${report.aprobada ? 'APROBADA' : 'NO APROBADA'}`);
   console.log('----------------------------------------------------------------\n');
 
   // Check stopping rules
@@ -308,8 +352,7 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
     process.exit(1);
   }
 
-  const passed = finalStatus === testCase.estado_esperado && (evalResult?.pass !== false);
-  if (!passed) {
+  if (!report.aprobada) {
     consecutiveFailures++;
     lastFailureReason = report.falloMotivo || 'Evaluación remota falló';
     if (consecutiveFailures >= 2 && process.env.RUNNER_STRICT === '1') {
@@ -324,7 +367,10 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
 }
 
 async function main() {
+  // Uso: npx tsx scripts/run-test.ts <E1|E2|...|all> [rondas]
+  //   all 3  -> corre las 5 pruebas tres veces y muestra la tasa de éxito de cada una.
   const targetArg = process.argv[2] || 'E1';
+  const rondas = Math.max(1, Math.min(10, Number(process.argv[3]) || 1));
   const pruebasDir = path.resolve('pruebas');
 
   const orderedFiles = [
@@ -335,44 +381,60 @@ async function main() {
     { id: 'E4', file: 'E4-exportar-pedidos.json' },
   ];
 
-  if (targetArg === 'all') {
-    const allReports: RunReport[] = [];
-    for (const item of orderedFiles) {
-      const fullPath = path.join(pruebasDir, item.file);
-      if (fs.existsSync(fullPath)) {
-        const testCase = JSON.parse(fs.readFileSync(fullPath, 'utf-8')) as TestCase;
-        try {
-          const rep = await runBenchmarkTask(testCase);
-          allReports.push(rep);
-        } catch (e: any) {
-          // Un error de red en una prueba no detiene las demás.
-          console.error(`[Runner] ${item.id} no se pudo completar: ${e?.cause?.code || e?.message || e}. Sigo con la siguiente.`);
-          await new Promise((r) => setTimeout(r, 5000));
-        }
+  const loadCase = (id: string): TestCase | null => {
+    const found = orderedFiles.find((f) => f.id.toUpperCase() === id.toUpperCase());
+    for (const name of [found?.file, `${id.toUpperCase()}.json`, `${id}.json`]) {
+      if (!name) continue;
+      const full = path.join(pruebasDir, name);
+      if (fs.existsSync(full)) return JSON.parse(fs.readFileSync(full, 'utf-8')) as TestCase;
+    }
+    return null;
+  };
+
+  const ids = targetArg === 'all' ? orderedFiles.map((f) => f.id) : targetArg.split(',');
+  const version = await agentVersion();
+  console.log(`[Runner] Agente: ${AGENT_BASE} | versión: ${version} | pruebas: ${ids.join(',')} | rondas: ${rondas}`);
+
+  const allReports: Array<RunReport & { ronda: number }> = [];
+  for (let ronda = 1; ronda <= rondas; ronda++) {
+    for (const id of ids) {
+      const testCase = loadCase(id);
+      if (!testCase) {
+        console.error(`Archivo de prueba no encontrado para ${id} en ${pruebasDir}`);
+        continue;
+      }
+      try {
+        const rep = await runBenchmarkTask(testCase);
+        allReports.push({ ...rep, ronda });
+        appendHistory(rep, version, ronda);
+      } catch (e: any) {
+        // Un error de red en una prueba no detiene las demás.
+        console.error(`[Runner] ${id} no se pudo completar: ${e?.cause?.code || e?.message || e}. Sigo con la siguiente.`);
+        await new Promise((r) => setTimeout(r, 5000));
       }
     }
-
-    console.log('\n================================================================');
-    console.log('TABLA RESUMEN DE TODAS LAS PRUEBAS OFICIALES:');
-    console.log('================================================================');
-    console.log('ID | Estado | Esperado | Check | Pasos | Tiempo | Costo USD | Resumen');
-    for (const r of allReports) {
-      const checkPass = r.evalResult?.pass ? 'PASS' : 'FAIL';
-      console.log(`${r.id.padEnd(3)} | ${r.estadoFinal.padEnd(9)} | ${r.estadoEsperado.padEnd(8)} | ${checkPass.padEnd(5)} | ${String(r.pasos).padStart(5)} | ${String(r.duracionSeg).padStart(4)}s | $${r.costoUsd.toFixed(4)} | ${r.resumen.slice(0, 40)}...`);
-    }
-  } else {
-    const found = orderedFiles.find((f) => f.id.toUpperCase() === targetArg.toUpperCase());
-    const fileToLoad = found ? found.file : `${targetArg.toUpperCase()}.json`;
-    const fullPath = path.join(pruebasDir, fileToLoad);
-
-    if (!fs.existsSync(fullPath)) {
-      console.error(`Archivo de prueba no encontrado: ${fullPath}`);
-      process.exit(1);
-    }
-
-    const testCase = JSON.parse(fs.readFileSync(fullPath, 'utf-8')) as TestCase;
-    await runBenchmarkTask(testCase);
   }
+
+  console.log('\n================================================================');
+  console.log(`RESUMEN (versión del agente: ${version})`);
+  console.log('================================================================');
+  console.log('Ronda | ID  | Resultado    | Estado    | Esperado | Check | Pasos | Tiempo | Costo USD | Resumen');
+  for (const r of allReports) {
+    const checkTxt = r.evalResult?.pass === true ? 'PASS' : r.evalResult?.pass === false ? 'FAIL' : '-';
+    console.log(
+      `${String(r.ronda).padStart(5)} | ${r.id.padEnd(3)} | ${(r.aprobada ? 'APROBADA' : 'NO APROBADA').padEnd(12)} | ${r.estadoFinal.padEnd(9)} | ${r.estadoEsperado.padEnd(8)} | ${checkTxt.padEnd(5)} | ${String(r.pasos).padStart(5)} | ${String(r.duracionSeg).padStart(5)}s | $${r.costoUsd.toFixed(4)} | ${r.resumen.replace(/\s+/g, ' ').slice(0, 50)}`
+    );
+  }
+  const porId = new Map<string, { ok: number; total: number }>();
+  for (const r of allReports) {
+    const e = porId.get(r.id) || { ok: 0, total: 0 };
+    e.total++;
+    if (r.aprobada) e.ok++;
+    porId.set(r.id, e);
+  }
+  const ok = allReports.filter((r) => r.aprobada).length;
+  console.log('\nTasa de éxito por prueba: ' + [...porId].map(([id, e]) => `${id} ${e.ok}/${e.total}`).join(' | '));
+  console.log(`TOTAL: ${ok}/${allReports.length} aprobadas. Historial acumulado en resultados/historial.jsonl`);
 }
 
 main().catch((err) => {

@@ -8,3 +8,7 @@ debug/
 *.png
 .env*
 !.env.example
+
+# Evidencia del proyecto (se versiona a propósito)
+!test/fixtures/*.png
+!docs/evidencia/**/*.png

@@ -156,3 +156,16 @@ test('OCR - ocrRegion lee una zona ampliada y devuelve coordenadas de pantalla',
   assert.ok(m, 'debe encontrar Entendido en la zona');
   assert.ok(Math.abs(m.box.x + m.box.w / 2 - 749) <= 6 && Math.abs(m.box.y + m.box.h / 2 - 404) <= 5, JSON.stringify(m.box));
 });
+
+test('OCR - captura real del agente (E1, 12/10): "Clientes" dentro del submenú flotante Comercial > Maestros', { timeout: 60000 }, async (t) => {
+  if (!(await ocrAvailable())) { t.skip('Tesseract no está instalado'); return; }
+  // Pantalla real 1280x800. Antes del cambio de la variante B a x3, el OCR no leía este texto y el agente
+  // terminaba haciendo clic con la visión en (230,92), fuera del submenú. "Clientes" está en ≈(327,76).
+  const buf = fs.readFileSync('test/fixtures/sigecom-submenu.png');
+  const m = findTextMatches(await ocrScreenshot(buf), 'Clientes')[0];
+  assert.ok(m, 'el OCR de pantalla completa debe leer "Clientes"');
+  assert.ok(Math.abs(m.box.x + m.box.w / 2 - 327) <= 6 && Math.abs(m.box.y + m.box.h / 2 - 76) <= 5, JSON.stringify(m.box));
+  const { ocrRegion } = await import('../src/agent/ocr.js');
+  const z = findTextMatches(await ocrRegion(buf, { x: 100, y: 0, w: 560, h: 440 }, 3), 'Clientes')[0];
+  assert.ok(z, 'el OCR de zona también debe leerlo');
+});

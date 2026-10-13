@@ -5,7 +5,7 @@
  * El OCR devuelve la caja de cada palabra en píxeles reales de la captura, sin IA de por medio.
  * Se corren tres variantes en paralelo y se combinan:
  *   A) gris x2, por bloques (párrafos, etiquetas, tablas)
- *   B) gris x2, texto disperso (barras de menú y etiquetas sueltas)
+ *   B) gris x3, texto disperso (barras de menú, submenús flotantes y etiquetas sueltas)
  *   C) texto claro binarizado x2 (texto blanco sobre botones de color o cabeceras)
  */
 
@@ -176,22 +176,26 @@ export async function ocrScreenshot(pngBuf: Buffer): Promise<OcrWord[]> {
 }
 
 async function runOcr(pngBuf: Buffer, lang: string): Promise<OcrWord[]> {
+  // B va a x3: medido sobre capturas reales de SIGECOM, a x2 no leía "Clientes" dentro del submenú
+  // flotante de Comercial > Maestros (texto dentro de un recuadro con borde); a x3 sí, por ~200 ms más.
   const variants: Array<{ id: string; scale: number; mode: 'gray' | 'light'; psm: string }> = [
     { id: 'A', scale: 2, mode: 'gray', psm: '6' },
-    { id: 'B', scale: 2, mode: 'gray', psm: '11' },
+    { id: 'B', scale: 3, mode: 'gray', psm: '11' },
     { id: 'C', scale: 2, mode: 'light', psm: '6' },
   ];
   const tmp = os.tmpdir();
   // Gris (bloques y texto disperso: menús) y binarizada para texto claro sobre botones de color.
   const gray2 = preprocess(pngBuf, 2, 'gray');
   await new Promise((r) => setImmediate(r)); // deja respirar al servidor HTTP entre pasos pesados
+  const gray3 = preprocess(pngBuf, 3, 'gray');
+  await new Promise((r) => setImmediate(r));
   const light2 = preprocess(pngBuf, 2, 'light');
   const results = await Promise.all(
     variants.map(async (v) => {
       const file = path.join(tmp, `ocr-${randomUUID()}.pgm`);
       if (!(await acquireProc(12000))) return [] as OcrWord[];
       try {
-        fs.writeFileSync(file, v.mode === 'light' ? light2 : gray2);
+        fs.writeFileSync(file, v.mode === 'light' ? light2 : v.scale === 3 ? gray3 : gray2);
         const tsv = await run('tesseract', [file, 'stdout', '-l', lang, '--psm', v.psm, 'tsv'], 15000);
         return parseTsv(tsv, v.scale, v.id);
       } catch {
@@ -213,8 +217,10 @@ export async function ocrRegion(pngBuf: Buffer, region: Rect, scale = 3): Promis
   const lang = await ocrAvailable();
   if (!lang) return [];
   const tmp = os.tmpdir();
+  // ZB (texto disperso) es la que lee las opciones de submenús flotantes; ZA/ZC cubren bloques y texto claro.
   const variants: Array<{ id: string; mode: 'gray' | 'light'; psm: string }> = [
     { id: 'ZA', mode: 'gray', psm: '6' },
+    { id: 'ZB', mode: 'gray', psm: '11' },
     { id: 'ZC', mode: 'light', psm: '6' },
   ];
   const results = await Promise.all(

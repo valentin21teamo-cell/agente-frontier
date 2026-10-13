@@ -32,7 +32,8 @@ test('HTTP Contract - GET /health responds 200 without Authorization header', as
     const res = await fetch(`${baseUrl}/health`);
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.deepEqual(body, { ok: true });
+    assert.equal(body.ok, true);
+    assert.equal(typeof body.version, 'string');
   } finally {
     await stopTestServer(server);
   }

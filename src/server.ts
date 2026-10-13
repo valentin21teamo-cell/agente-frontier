@@ -95,7 +95,8 @@ export function requireTeamAuth(req: Request, res: Response, next: NextFunction)
  * Returns 200 {"ok":true} without requiring auth.
  */
 app.get('/health', (_req: Request, res: Response) => {
-  res.status(200).json({ ok: true });
+  // version: revisión de Cloud Run (K_REVISION) para atar cada medición del banco de pruebas a un despliegue.
+  res.status(200).json({ ok: true, version: process.env.K_REVISION || process.env.AGENT_VERSION || 'local' });
 });
 
 /**
