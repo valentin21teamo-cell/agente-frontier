@@ -13,7 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
-import { safeLogger } from '../src/security/sanitize.js';
+import { safeLogger, sanitize } from '../src/security/sanitize.js';
 
 dotenv.config();
 
@@ -409,7 +409,14 @@ async function main() {
         appendHistory(rep, version, ronda);
       } catch (e: any) {
         // Un error de red en una prueba no detiene las demás.
-        console.error(`[Runner] ${id} no se pudo completar: ${e?.cause?.code || e?.message || e}. Sigo con la siguiente.`);
+        const why = `${e?.cause?.code || ''} ${e?.message || e}`.trim();
+        console.error(`[Runner] ${id} no se pudo completar: ${why}. Sigo con la siguiente.`);
+        // Queda registrado aunque nadie vea la consola (sin secretos: pasa por sanitize).
+        fs.mkdirSync(path.resolve('resultados'), { recursive: true });
+        fs.appendFileSync(
+          path.resolve('resultados', 'errores.log'),
+          `${new Date().toISOString()} | versión ${version} | ${id} | ${sanitize(why, DESKTOP_PASSWORD).slice(0, 400)}\n`
+        );
         await new Promise((r) => setTimeout(r, 5000));
       }
     }
