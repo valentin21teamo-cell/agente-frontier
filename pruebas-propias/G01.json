@@ -1,0 +1,22 @@
+{
+  "id": "G01",
+  "nivel": "regular",
+  "instruccion": "Registra al cliente Papelería Los Andes, NIT 901234567, teléfono 3157654321, ciudad Pereira.",
+  "estado_esperado": "terminada",
+  "diff_esperado": [
+    {
+      "entidad": "clientes",
+      "id": "nuevo",
+      "campo": "*",
+      "accion": "create",
+      "valor": {
+        "nombre": "Papelería Los Andes",
+        "tipo_doc": "NIT",
+        "documento": "901234567",
+        "telefono": "3157654321",
+        "ciudad": "Pereira"
+      }
+    }
+  ],
+  "lista_blanca": []
+}

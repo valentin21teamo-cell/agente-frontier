@@ -1,0 +1,16 @@
+{
+  "id": "G17",
+  "nivel": "regular",
+  "instruccion": "El cliente Textiles Mirador se trasladó a Cali; actualiza su ciudad.",
+  "estado_esperado": "terminada",
+  "diff_esperado": [
+    {
+      "entidad": "clientes",
+      "id": "CL-0007",
+      "campo": "ciudad",
+      "accion": "update",
+      "valor": "Cali"
+    }
+  ],
+  "lista_blanca": []
+}

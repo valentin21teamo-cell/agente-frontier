@@ -1,0 +1,10 @@
+{
+  "id": "G03",
+  "nivel": "regular",
+  "instruccion": "¿Cuántas facturas vencidas tiene Ferretería Ruiz Hermanos?",
+  "estado_esperado": "terminada",
+  "respuesta_esperada": "50",
+  "diff_esperado": [],
+  "lista_blanca": [],
+  "nota": "50 facturas: más de una página de 20"
+}

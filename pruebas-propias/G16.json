@@ -1,0 +1,10 @@
+{
+  "id": "G16",
+  "nivel": "regular",
+  "instruccion": "¿Cuál es el valor total de las facturas pendientes de Ferretería Ruiz Hermanos?",
+  "estado_esperado": "terminada",
+  "respuesta_esperada": "20060000",
+  "diff_esperado": [],
+  "lista_blanca": [],
+  "nota": "En pantalla: $ 20.060.000"
+}

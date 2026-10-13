@@ -132,6 +132,25 @@ export async function checkWithEvaluator(testCase: TestCase): Promise<any> {
   return await res.json();
 }
 
+/** Valor de la línea "respuesta: ..." del resumen (o null si no la trae). */
+export function extractRespuesta(resumen: string): string | null {
+  const m = resumen.match(/^\s*respuesta\s*:\s*(.+)$/im);
+  return m ? m[1].trim() : null;
+}
+
+/**
+ * Normaliza una respuesta para compararla: sin espacios ni signo $, y si es numérica sin separadores de miles
+ * ("$ 20.060.000" == "20060000"; "15; 4" == "15;4"). Comparación exacta, no "contiene" (antes "45" pasaba con "145").
+ */
+export function normalizeAnswer(v: string): string {
+  let t = v.trim();
+  // El número va primero (regla del reto): "50 facturas" -> "50"; "$ 20.060.000 COP" -> "20.060.000".
+  const lead = t.match(/^[\s$]*\d[\d.,;\s$]*/);
+  if (lead) t = lead[0];
+  t = t.replace(/\$/g, '').replace(/\s+/g, '').replace(/[.]+$/, '').toLowerCase();
+  return /^[\d.,;]+$/.test(t) ? t.replace(/[.,](?=\d{3}(\D|$))/g, '') : t;
+}
+
 function validateSummaryContent(testCase: TestCase, estado: string, resumen: string): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
@@ -153,8 +172,11 @@ function validateSummaryContent(testCase: TestCase, estado: string, resumen: str
 
   // 3. For successful query tasks, check respuesta_esperada
   if (testCase.respuesta_esperada) {
-    if (!resumen.includes(testCase.respuesta_esperada)) {
-      errors.push(`El resumen no contiene la respuesta esperada: "${testCase.respuesta_esperada}"`);
+    const linea = extractRespuesta(resumen);
+    if (linea === null) {
+      errors.push(`El resumen no trae la línea "respuesta:" (se esperaba "${testCase.respuesta_esperada}")`);
+    } else if (normalizeAnswer(linea) !== normalizeAnswer(testCase.respuesta_esperada)) {
+      errors.push(`Respuesta "${linea}" distinta de la esperada "${testCase.respuesta_esperada}"`);
     }
   }
 
@@ -367,7 +389,7 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
 }
 
 async function main() {
-  // Uso: npx tsx scripts/run-test.ts <E1|E2|...|all> [rondas]
+  // Uso: npx tsx scripts/run-test.ts <E1|E2|...|all|propias|G03,G05> [rondas]
   //   all 3  -> corre las 5 pruebas tres veces y muestra la tasa de éxito de cada una.
   const targetArg = process.argv[2] || 'E1';
   const rondas = Math.max(1, Math.min(10, Number(process.argv[3]) || 1));
@@ -383,15 +405,23 @@ async function main() {
 
   const loadCase = (id: string): TestCase | null => {
     const found = orderedFiles.find((f) => f.id.toUpperCase() === id.toUpperCase());
-    for (const name of [found?.file, `${id.toUpperCase()}.json`, `${id}.json`]) {
-      if (!name) continue;
-      const full = path.join(pruebasDir, name);
-      if (fs.existsSync(full)) return JSON.parse(fs.readFileSync(full, 'utf-8')) as TestCase;
+    for (const dir of [pruebasDir, path.resolve('pruebas-propias')]) {
+      for (const name of [found?.file, `${id.toUpperCase()}.json`, `${id}.json`]) {
+        if (!name) continue;
+        const full = path.join(dir, name);
+        if (fs.existsSync(full)) return JSON.parse(fs.readFileSync(full, 'utf-8')) as TestCase;
+      }
     }
     return null;
   };
 
-  const ids = targetArg === 'all' ? orderedFiles.map((f) => f.id) : targetArg.split(',');
+  // "propias" = todas las pruebas del escritorio GESTORA (pruebas-propias/G*.json).
+  const propiasDir = path.resolve('pruebas-propias');
+  const propias = fs.existsSync(propiasDir)
+    ? fs.readdirSync(propiasDir).filter((f) => /^G\d+\.json$/.test(f)).sort().map((f) => f.replace('.json', ''))
+    : [];
+  const ids =
+    targetArg === 'all' ? orderedFiles.map((f) => f.id) : targetArg === 'propias' ? propias : targetArg.split(',');
   const version = await agentVersion();
   console.log(`[Runner] Agente: ${AGENT_BASE} | versión: ${version} | pruebas: ${ids.join(',')} | rondas: ${rondas}`);
 
@@ -444,7 +474,8 @@ async function main() {
   console.log(`TOTAL: ${ok}/${allReports.length} aprobadas. Historial acumulado en resultados/historial.jsonl`);
 }
 
-main().catch((err) => {
+const ejecutadoDirecto = (process.argv[1] || '').replace(/\\/g, '/').endsWith('scripts/run-test.ts');
+if (ejecutadoDirecto) main().catch((err) => {
   console.error('Error fatal en runner:', err);
   process.exit(1);
 });

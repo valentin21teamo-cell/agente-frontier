@@ -573,7 +573,8 @@ export class RfbClient {
 
   /**
    * Types text into a field.
-   * If clearFirst is true, sends Ctrl+A and Backspace to prevent appending to preexisting text.
+   * If clearFirst is true, sends Ctrl+A and Backspace (and End, Shift+Home, Backspace as a fallback)
+   * to prevent appending to preexisting text.
    */
   public async typeText(text: string, clearFirst = true): Promise<void> {
     if (clearFirst) {
@@ -590,7 +591,24 @@ export class RfbClient {
       this.sendKey(true, SPECIAL_KEYSYMS.BackSpace);
       await new Promise((r) => setTimeout(r, 40));
       this.sendKey(false, SPECIAL_KEYSYMS.BackSpace);
-      await new Promise((r) => setTimeout(r, 150));
+      await new Promise((r) => setTimeout(r, 80));
+      // Respaldo: en algunos toolkits (Tk, Emacs, terminales) Ctrl+A va al inicio de la línea en vez de
+      // seleccionar todo, y el texto viejo quedaba pegado al nuevo (medido en GESTORA el 13/10).
+      // Fin, Shift+Inicio y Retroceso borran la línea en casi cualquier campo; sobre un campo vacío no hacen nada.
+      const tap = async (keysym: number) => {
+        this.sendKey(true, keysym);
+        await new Promise((r) => setTimeout(r, 30));
+        this.sendKey(false, keysym);
+        await new Promise((r) => setTimeout(r, 40));
+      };
+      await tap(SPECIAL_KEYSYMS.End);
+      this.sendKey(true, SPECIAL_KEYSYMS.Shift_L);
+      await new Promise((r) => setTimeout(r, 30));
+      await tap(SPECIAL_KEYSYMS.Home);
+      this.sendKey(false, SPECIAL_KEYSYMS.Shift_L);
+      await new Promise((r) => setTimeout(r, 30));
+      await tap(SPECIAL_KEYSYMS.BackSpace);
+      await new Promise((r) => setTimeout(r, 100));
     }
 
     for (let i = 0; i < text.length; i++) {

@@ -1,0 +1,9 @@
+{
+  "id": "G14",
+  "nivel": "regular",
+  "instruccion": "¿Cuántos clientes hay en Manizales?",
+  "estado_esperado": "terminada",
+  "respuesta_esperada": "6",
+  "diff_esperado": [],
+  "lista_blanca": []
+}

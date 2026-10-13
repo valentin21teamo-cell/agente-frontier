@@ -1,0 +1,10 @@
+{
+  "id": "G10",
+  "nivel": "regular",
+  "instruccion": "¿Cuántos pedidos se registraron hoy?",
+  "estado_esperado": "terminada",
+  "respuesta_esperada": "4",
+  "diff_esperado": [],
+  "lista_blanca": [],
+  "nota": "Hoy es la fecha de la aplicación (14/10/2026), no la del sistema"
+}

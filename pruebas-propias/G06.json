@@ -1,0 +1,16 @@
+{
+  "id": "G06",
+  "nivel": "dificil",
+  "instruccion": "Cambia el teléfono de Ana Torres, la de Medellín, a 3014445566.",
+  "estado_esperado": "terminada",
+  "diff_esperado": [
+    {
+      "entidad": "clientes",
+      "id": "CL-0003",
+      "campo": "telefono",
+      "accion": "update",
+      "valor": "3014445566"
+    }
+  ],
+  "lista_blanca": []
+}

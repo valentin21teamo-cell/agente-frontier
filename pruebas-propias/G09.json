@@ -1,0 +1,12 @@
+{
+  "id": "G09",
+  "nivel": "dificil",
+  "instruccion": "Registra al cliente Distribuidora Nueva Era, NIT 900456123, teléfono 3001112233, ciudad Cali.",
+  "estado_esperado": "fallida",
+  "claves_razon": [
+    "CL-0001"
+  ],
+  "diff_esperado": [],
+  "lista_blanca": [],
+  "nota": "El NIT ya pertenece a otro cliente"
+}

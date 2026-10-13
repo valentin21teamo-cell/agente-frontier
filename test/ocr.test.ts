@@ -169,3 +169,12 @@ test('OCR - captura real del agente (E1, 12/10): "Clientes" dentro del submenú 
   const z = findTextMatches(await ocrRegion(buf, { x: 100, y: 0, w: 560, h: 440 }, 3), 'Clientes')[0];
   assert.ok(z, 'el OCR de zona también debe leerlo');
 });
+
+test('OCR - variante D (inversión local): lee el fondo atenuado detrás de un modal en la pantalla real 1280x800', { timeout: 60000 }, async (t) => {
+  if (!(await ocrAvailable())) { t.skip('Tesseract no está instalado'); return; }
+  // Sin la variante D, las otras tres no leían el texto atenuado de fondo (28 palabras vs 50 medidas el 13/10).
+  const words = await ocrScreenshot(fs.readFileSync('test/fixtures/sigecom-modal-1280.png'));
+  assert.ok(findTextMatches(words, 'Bienvenido a SIGECOM')[0], 'debe leer el título atenuado detrás del modal');
+  const ent = findTextMatches(words, 'Entendido')[0];
+  assert.ok(ent && Math.abs(ent.box.x + ent.box.w / 2 - 840) <= 8 && Math.abs(ent.box.y + ent.box.h / 2 - 483) <= 6, JSON.stringify(ent?.box));
+});

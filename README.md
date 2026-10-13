@@ -41,6 +41,14 @@ Una prueba cuenta como **aprobada** solo si cumple las tres cosas. Cada corrida 
 
 Evidencia del proyecto (salida real de pruebas, mediciones, capturas, incidentes): `docs/evidencia/`.
 
+## Escritorio de prueba propio (GESTORA ERP)
+El escritorio de práctica de la competencia ya no existe. Para seguir midiendo, `escritorio/` trae lo siguiente:
+- una aplicación legada ficticia operable por VNC;
+- un evaluador compatible (`/__reset`, `/__check`);
+- 20 pruebas con respuestas calculadas desde los datos (`pruebas-propias/`).
+
+Para correrlas: `npx tsx scripts/run-test.ts propias`. Detalles y despliegue en [`escritorio/README.md`](escritorio/README.md).
+
 ## Variables de entorno (sin valores en el repo)
 `OPENROUTER_API_KEY`, `TEAM_TOKEN`, `MODEL_ID`, `GROUNDING_MODEL_ID`, `PORT`, `TASK_DEADLINE_MS`, `MAX_STEPS`, `MAX_CONCURRENT_TASKS`, `MAX_COST_USD_PER_TASK`, `OCR_MAX_PROCS`, `DESKTOP_LOCK`, `SNAP_CLICKS` (0 por defecto), `DEBUG_SHOTS`. Ver `.env.example`.
 

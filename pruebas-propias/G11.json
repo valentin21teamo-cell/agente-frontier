@@ -1,0 +1,16 @@
+{
+  "id": "G11",
+  "nivel": "regular",
+  "instruccion": "Anula el pedido PE-2284.",
+  "estado_esperado": "terminada",
+  "diff_esperado": [
+    {
+      "entidad": "pedidos",
+      "id": "PE-2284",
+      "campo": "estado",
+      "accion": "update",
+      "valor": "Anulado"
+    }
+  ],
+  "lista_blanca": []
+}

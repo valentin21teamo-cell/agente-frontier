@@ -1,0 +1,16 @@
+{
+  "id": "G02",
+  "nivel": "regular",
+  "instruccion": "Corrige la dirección del cliente Almacén El Faro del Norte: ahora es Calle 80 # 24-15.",
+  "estado_esperado": "terminada",
+  "diff_esperado": [
+    {
+      "entidad": "clientes",
+      "id": "CL-0004",
+      "campo": "direccion",
+      "accion": "update",
+      "valor": "Calle 80 # 24-15"
+    }
+  ],
+  "lista_blanca": []
+}

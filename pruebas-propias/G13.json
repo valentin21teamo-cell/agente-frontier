@@ -1,0 +1,9 @@
+{
+  "id": "G13",
+  "nivel": "regular",
+  "instruccion": "¿Cuál es el teléfono del cliente Andrés Ríos?",
+  "estado_esperado": "terminada",
+  "respuesta_esperada": "3715040197",
+  "diff_esperado": [],
+  "lista_blanca": []
+}

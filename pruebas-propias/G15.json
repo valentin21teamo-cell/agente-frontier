@@ -1,0 +1,9 @@
+{
+  "id": "G15",
+  "nivel": "regular",
+  "instruccion": "¿Cuántas facturas pagadas y cuántas pendientes tiene Ferretería Ruiz Hermanos? Responde en ese orden.",
+  "estado_esperado": "terminada",
+  "respuesta_esperada": "15;4",
+  "diff_esperado": [],
+  "lista_blanca": []
+}

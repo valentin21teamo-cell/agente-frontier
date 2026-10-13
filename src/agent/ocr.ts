@@ -3,10 +3,11 @@
  *
  * El modelo de visión acierta QUÉ elemento es, pero sus coordenadas fallan decenas o cientos de píxeles.
  * El OCR devuelve la caja de cada palabra en píxeles reales de la captura, sin IA de por medio.
- * Se corren tres variantes en paralelo y se combinan:
+ * Se corren cuatro variantes en paralelo y se combinan:
  *   A) gris x2, por bloques (párrafos, etiquetas, tablas)
  *   B) gris x3, texto disperso (barras de menú, submenús flotantes y etiquetas sueltas)
  *   C) texto claro binarizado x2 (texto blanco sobre botones de color o cabeceras)
+ *   D) inversión local x3 (texto claro sobre fondo oscuro: opción de menú resaltada, fondo detrás de un modal)
  */
 
 import { execFile } from 'node:child_process';
@@ -61,7 +62,37 @@ export async function ocrAvailable(): Promise<string | null> {
  * Escala de grises ampliada (bilineal) en formato PGM (sin compresión: escribirlo es casi instantáneo y no
  * bloquea el servidor). mode "light" binariza el texto claro y lo deja negro sobre blanco.
  */
-export function preprocess(pngBuf: Buffer, scale: number, mode: 'gray' | 'light', region?: Rect): Buffer {
+export type OcrMode = 'gray' | 'light' | 'invert';
+
+/**
+ * Inversión local: donde el entorno (ventana de 21x21 px) es oscuro, se invierte la luminancia.
+ * Así el texto claro sobre fondo oscuro (opción de menú resaltada, botón de color, fondo atenuado
+ * detrás de un modal) queda oscuro sobre claro, sin tocar el resto de la pantalla.
+ */
+function invertLocal(lum: Float32Array, W: number, H: number): void {
+  const R = 10;
+  const integ = new Float64Array((W + 1) * (H + 1));
+  for (let y = 0; y < H; y++) {
+    let row = 0;
+    for (let x = 0; x < W; x++) {
+      row += lum[y * W + x];
+      integ[(y + 1) * (W + 1) + x + 1] = integ[y * (W + 1) + x + 1] + row;
+    }
+  }
+  const src = Float32Array.from(lum);
+  for (let y = 0; y < H; y++) {
+    const y0 = Math.max(0, y - R);
+    const y1 = Math.min(H, y + R + 1);
+    for (let x = 0; x < W; x++) {
+      const x0 = Math.max(0, x - R);
+      const x1 = Math.min(W, x + R + 1);
+      const sum = integ[y1 * (W + 1) + x1] - integ[y0 * (W + 1) + x1] - integ[y1 * (W + 1) + x0] + integ[y0 * (W + 1) + x0];
+      if (sum / ((x1 - x0) * (y1 - y0)) < 128) lum[y * W + x] = 255 - src[y * W + x];
+    }
+  }
+}
+
+export function preprocess(pngBuf: Buffer, scale: number, mode: OcrMode, region?: Rect): Buffer {
   const src = PNG.sync.read(pngBuf);
   const rx = region ? Math.max(0, Math.min(src.width - 1, Math.round(region.x))) : 0;
   const ry = region ? Math.max(0, Math.min(src.height - 1, Math.round(region.y))) : 0;
@@ -74,6 +105,7 @@ export function preprocess(pngBuf: Buffer, scale: number, mode: 'gray' | 'light'
       lum[y * W + x] = 0.299 * src.data[i] + 0.587 * src.data[i + 1] + 0.114 * src.data[i + 2];
     }
   }
+  if (mode === 'invert') invertLocal(lum, W, H);
   const OW = W * scale;
   const OH = H * scale;
   const header = Buffer.from(`P5\n${OW} ${OH}\n255\n`, 'ascii');
@@ -178,10 +210,13 @@ export async function ocrScreenshot(pngBuf: Buffer): Promise<OcrWord[]> {
 async function runOcr(pngBuf: Buffer, lang: string): Promise<OcrWord[]> {
   // B va a x3: medido sobre capturas reales de SIGECOM, a x2 no leía "Clientes" dentro del submenú
   // flotante de Comercial > Maestros (texto dentro de un recuadro con borde); a x3 sí, por ~200 ms más.
-  const variants: Array<{ id: string; scale: number; mode: 'gray' | 'light'; psm: string }> = [
+  // D (inversión local x3): medido en capturas reales, recupera texto claro sobre fondo oscuro que A-C
+  // no leían: la opción resaltada de un menú desplegable y todo el fondo atenuado detrás de un modal.
+  const variants: Array<{ id: string; scale: number; mode: OcrMode; psm: string }> = [
     { id: 'A', scale: 2, mode: 'gray', psm: '6' },
     { id: 'B', scale: 3, mode: 'gray', psm: '11' },
     { id: 'C', scale: 2, mode: 'light', psm: '6' },
+    { id: 'D', scale: 3, mode: 'invert', psm: '11' },
   ];
   const tmp = os.tmpdir();
   // Gris (bloques y texto disperso: menús) y binarizada para texto claro sobre botones de color.
@@ -190,12 +225,14 @@ async function runOcr(pngBuf: Buffer, lang: string): Promise<OcrWord[]> {
   const gray3 = preprocess(pngBuf, 3, 'gray');
   await new Promise((r) => setImmediate(r));
   const light2 = preprocess(pngBuf, 2, 'light');
+  await new Promise((r) => setImmediate(r));
+  const inv3 = preprocess(pngBuf, 3, 'invert');
   const results = await Promise.all(
     variants.map(async (v) => {
       const file = path.join(tmp, `ocr-${randomUUID()}.pgm`);
       if (!(await acquireProc(12000))) return [] as OcrWord[];
       try {
-        fs.writeFileSync(file, v.mode === 'light' ? light2 : v.scale === 3 ? gray3 : gray2);
+        fs.writeFileSync(file, v.mode === 'light' ? light2 : v.mode === 'invert' ? inv3 : v.scale === 3 ? gray3 : gray2);
         const tsv = await run('tesseract', [file, 'stdout', '-l', lang, '--psm', v.psm, 'tsv'], 15000);
         return parseTsv(tsv, v.scale, v.id);
       } catch {
@@ -218,7 +255,7 @@ export async function ocrRegion(pngBuf: Buffer, region: Rect, scale = 3): Promis
   if (!lang) return [];
   const tmp = os.tmpdir();
   // ZB (texto disperso) es la que lee las opciones de submenús flotantes; ZA/ZC cubren bloques y texto claro.
-  const variants: Array<{ id: string; mode: 'gray' | 'light'; psm: string }> = [
+  const variants: Array<{ id: string; mode: OcrMode; psm: string }> = [
     { id: 'ZA', mode: 'gray', psm: '6' },
     { id: 'ZB', mode: 'gray', psm: '11' },
     { id: 'ZC', mode: 'light', psm: '6' },

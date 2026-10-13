@@ -1,0 +1,10 @@
+{
+  "id": "G19",
+  "nivel": "dificil",
+  "instruccion": "¿Cuántos pedidos se registraron en los últimos 7 días, contando hoy?",
+  "estado_esperado": "terminada",
+  "respuesta_esperada": "17",
+  "diff_esperado": [],
+  "lista_blanca": [],
+  "nota": "Del 08/10/2026 al 14/10/2026"
+}
