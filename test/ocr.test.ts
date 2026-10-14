@@ -178,3 +178,22 @@ test('OCR - variante D (inversión local): lee el fondo atenuado detrás de un m
   const ent = findTextMatches(words, 'Entendido')[0];
   assert.ok(ent && Math.abs(ent.box.x + ent.box.w / 2 - 840) <= 8 && Math.abs(ent.box.y + ent.box.h / 2 - 483) <= 6, JSON.stringify(ent?.box));
 });
+
+test('OCR - campo junto a una etiqueta larga (GESTORA): gana el campo de la derecha, no la tabla de abajo', { timeout: 60000 }, async (t) => {
+  if (!(await ocrAvailable())) { t.skip('Tesseract no está instalado'); return; }
+  // En la corrida del 13/10 el agente escribía en (56,165), la cabecera de la tabla. El campo está en x 229-486, y 115-137.
+  const buf = fs.readFileSync('test/fixtures/gestora-clientes.png');
+  const label = findTextMatches(await ocrScreenshot(buf), 'Buscar (nombre o documento):')[0];
+  assert.ok(label, 'debe leer la etiqueta');
+  const p = findFieldNearLabel(buf, label.box);
+  assert.ok(p && p.x > 229 && p.x < 486 && p.y > 115 && p.y < 137, JSON.stringify(p));
+});
+
+test('OCR - lista desplegable "Ciudad" en el formulario de GESTORA: se ubica el combo, no la etiqueta', { timeout: 60000 }, async (t) => {
+  if (!(await ocrAvailable())) { t.skip('Tesseract no está instalado'); return; }
+  const buf = fs.readFileSync('test/fixtures/gestora-form.png');
+  const label = findTextMatches(await ocrScreenshot(buf), 'Ciudad')[0];
+  assert.ok(label, 'debe leer la etiqueta');
+  const p = findFieldNearLabel(buf, label.box);
+  assert.ok(p && p.x > 253 && p.x < 435 && p.y > 268 && p.y < 290, JSON.stringify(p));
+});

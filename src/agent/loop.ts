@@ -148,7 +148,14 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
    */
   async function resolvePoint(action: AgentAction, screenshot: Buffer): Promise<Resolved> {
     let costUsd = 0;
-    const isField = action.action === 'type_text';
+    // Campo: escribir, o hacer clic en una lista desplegable / campo nombrado por su etiqueta
+    // (el agente hacía clic sobre la etiqueta "Ciudad" y la lista no se abría; medido en GESTORA, 13/10).
+    const objetivoTxt = action.objetivo ?? '';
+    const isField =
+      action.action === 'type_text' ||
+      (action.action === 'click' &&
+        /lista desplegable|desplegable|combo|selector|campo|cuadro de texto|caja de texto|dropdown/i.test(objetivoTxt) &&
+        !/opci[oó]n|option|bot[oó]n|button|elemento de la lista|fila/i.test(objetivoTxt));
     const centerOf = (m: Match) => ({ x: Math.round(m.box.x + m.box.w / 2), y: Math.round(m.box.y + m.box.h / 2) });
     const finish = (m: Match, via: string): Resolved => {
       if (isField) {

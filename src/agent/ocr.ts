@@ -422,8 +422,10 @@ export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y:
     return h >= 14 && h <= 48 ? { top, bottom } : null;
   };
 
-  const lcx = label.x + label.w / 2;
   const lcy = label.y + label.h / 2;
+  // gap = espacio en píxeles entre el borde de la etiqueta y el borde del campo. Se compara el hueco y no la
+  // distancia entre centros: con etiquetas largas ("Buscar (nombre o documento):") el centro queda lejos del
+  // campo de la derecha y ganaba por error la cabecera de la tabla de abajo (medido en GESTORA, 13/10).
   const candidates: Array<{ x: number; y: number; d: number }> = [];
 
   // A la derecha, en la fila de la etiqueta: primer borde vertical que abre una caja confirmada.
@@ -434,7 +436,7 @@ export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y:
     if (box) {
       const px = x + 25;
       const py = Math.round((box.top + box.bottom) / 2);
-      candidates.push({ x: px, y: py, d: Math.hypot(px - lcx, py - lcy) });
+      candidates.push({ x: px, y: py, d: x - (label.x + label.w) });
       break;
     }
   }
@@ -447,7 +449,8 @@ export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y:
     if (box) {
       const px = sx + 25;
       const py = Math.round((box.top + box.bottom) / 2);
-      candidates.push({ x: px, y: py, d: Math.hypot(px - lcx, py - lcy) });
+      // Un campo debajo se usa solo si está claramente más cerca que el de la derecha (+8 px de margen).
+      candidates.push({ x: px, y: py, d: y - (label.y + label.h) + 8 });
       break;
     }
   }
