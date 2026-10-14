@@ -383,8 +383,9 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
     console.error(`\n[AVISO DE COSTO] Tarea ${testCase.id} superó US$ 0.30 ($${costUsd.toFixed(4)}).`);
     if (strict) process.exit(1);
   }
-  if (sessionTotalCostUsd > 3.00) {
-    console.error(`\n[ALERTA DE PARADA] Costo acumulado superó US$ 3.00 ($${sessionTotalCostUsd.toFixed(4)}). Deteniendo ejecución.`);
+  const topeSesion = Number(process.env.RUNNER_MAX_USD) > 0 ? Number(process.env.RUNNER_MAX_USD) : 3;
+  if (sessionTotalCostUsd > topeSesion) {
+    console.error(`\n[ALERTA DE PARADA] Costo acumulado superó US$ ${topeSesion.toFixed(2)} ($${sessionTotalCostUsd.toFixed(4)}). Deteniendo ejecución.`);
     process.exit(1);
   }
 
