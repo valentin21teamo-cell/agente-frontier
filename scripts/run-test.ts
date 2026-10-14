@@ -16,8 +16,8 @@ import dotenv from 'dotenv';
 import { safeLogger, sanitize } from '../src/security/sanitize.js';
 
 dotenv.config();
-// Valores del escritorio de prueba propio (los escribe Claude en el PC sin tocar el .env con los secretos).
-dotenv.config({ path: '.env.escritorio', override: true });
+// Valores del escritorio de prueba propio (archivo escritorio.env, aparte del .env con los secretos del agente).
+dotenv.config({ path: 'escritorio.env', override: true, quiet: true } as any);
 
 /** --modelo X / --localizador Y: comparar modelos con las mismas pruebas (se envía por tarea al agente). */
 function argValue(flag: string): string | undefined {

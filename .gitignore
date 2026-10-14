@@ -12,3 +12,6 @@ debug/
 # Evidencia del proyecto (se versiona a propósito)
 !test/fixtures/*.png
 !docs/evidencia/**/*.png
+
+# Datos de acceso al escritorio de prueba (nunca al repo)
+escritorio.env
