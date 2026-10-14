@@ -146,7 +146,7 @@ export async function checkWithEvaluator(testCase: TestCase): Promise<any> {
 
 /** Resúmenes que escribe el propio servidor cuando corta una tarea (no son decisiones del agente). */
 export function corteTecnico(resumen: string): boolean {
-  return /^(L[ií]mite de costo|L[ií]mite m[aá]ximo de pasos|Plazo m[aá]ximo|La interfaz no respondi[oó]|Error en ejecuci[oó]n)/i.test(
+  return /^(L[ií]mite de costo|L[ií]mite m[aá]ximo de pasos|Plazo m[aá]ximo|No se complet[oó] dentro del plazo|La interfaz no respondi[oó]|Error en ejecuci[oó]n)/i.test(
     resumen.trim()
   );
 }

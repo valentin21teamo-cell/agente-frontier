@@ -23,6 +23,8 @@ Regla: lo que no tiene fuente adjunta se marca como **sin archivar** o **por con
 | 12/10 22:31 | — (corrida) | `CORRER-PRUEBAS.cmd`: el código se actualizó, pero las 5 pruebas fallaron antes de guardar resultados y el error solo quedó en la consola. Causa probable, no confirmada: el escritorio de práctica ya no existe |
 | 13/10 18:1x | daa1472 | Diagnóstico del entorno sin secretos (`scripts/diagnostico.ts`); el runner registra las fallas en `resultados/errores.log` |
 | 13/10 ~19:00 | 7104536 | Escritorio de prueba propio GESTORA ERP + 20 pruebas; OCR variante D; limpieza de campos más robusta; comparación exacta de respuestas |
+| 13/10 21:5x–23:00 | c588a2c, fba3dc4, 87f23df | Modelo elegible por tarea (Claude con localización en píxeles); escritorio publicado en Cloud Run por Andrés (`desplegar.sh`) |
+| 13/10 23:00–14/10 01:34 | — (corridas) | Banco GESTORA con la revisión 00030: Claude Sonnet 5.5 aprobó 18/20 (17 legítimas) y Gemini 2.5 Flash 8/20. Detalle en `benchmark-2026-10-14/RESULTADOS.md` |
 
 ## Incidentes
 
@@ -60,7 +62,7 @@ Regla: lo que no tiene fuente adjunta se marca como **sin archivar** o **por con
 - Sin token, `/__check` responde 401. Un cambio de más o sobre el registro equivocado no pasa (pruebas unitarias).
 - **Hallazgo:** en Tk, Ctrl+A no selecciona todo. El agente escribió `32055512343647643075`, con el texto viejo pegado al nuevo (captura `capturas/gestora-2026-10-13/06-...`). Corregido en el cliente RFB y verificado: G07 pasa (`07-...`).
 - Salidas: `pruebas/npm-test-7104536.txt` (58/58) y `pruebas/python-escritorio-7104536.txt` (11/11).
-- **Pendiente:** la tasa de éxito del agente completo (planificador + OCR + visión) sobre G01–G20. Se mide cuando el escritorio esté desplegado en Cloud Run.
+- **Medido el 13–14/10** con el agente completo en Cloud Run: Sonnet 5.5 aprobó 18/20 a COP 611 por tarea y Gemini 2.5 Flash 8/20 a COP 115. Flash obedeció la instrucción inyectada en G07 y declaró éxito sin crear el cliente en G01. Detalle en `benchmark-2026-10-14/RESULTADOS.md`.
 
 ### OCR: variante D (inversión local), 13/10
 - Captura real de SIGECOM con el modal de novedades: las variantes A+B+C leían 28 palabras distintas y con D, 50. El fondo atenuado detrás del modal antes no se leía.

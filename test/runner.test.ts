@@ -24,5 +24,6 @@ test('Runner - un corte técnico no cuenta como "fallida" decidida por el agente
   const { corteTecnico } = await import('../scripts/run-test.js');
   assert.ok(corteTecnico('Límite de costo por tarea alcanzado (0.2658 USD) sin completar. Últimas acciones: ... Pasto'));
   assert.ok(corteTecnico('Plazo máximo de ejecución vencido (285s) tras 14 pasos.'));
+  assert.ok(corteTecnico('No se completó dentro del plazo (14 pasos). Últimas acciones: ...'));
   assert.ok(!corteTecnico('Pasto no está en la lista de ciudades de la aplicación; no se registró el cliente.'));
 });
