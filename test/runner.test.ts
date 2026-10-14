@@ -19,3 +19,10 @@ test('Runner - extrae la línea respuesta del resumen', () => {
   assert.equal(extractRespuesta('Se contaron.\nRespuesta: 15;4'), '15;4');
   assert.equal(extractRespuesta('No se pudo.'), null);
 });
+
+test('Runner - un corte técnico no cuenta como "fallida" decidida por el agente', async () => {
+  const { corteTecnico } = await import('../scripts/run-test.js');
+  assert.ok(corteTecnico('Límite de costo por tarea alcanzado (0.2658 USD) sin completar. Últimas acciones: ... Pasto'));
+  assert.ok(corteTecnico('Plazo máximo de ejecución vencido (285s) tras 14 pasos.'));
+  assert.ok(!corteTecnico('Pasto no está en la lista de ciudades de la aplicación; no se registró el cliente.'));
+});

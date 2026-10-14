@@ -144,6 +144,13 @@ export async function checkWithEvaluator(testCase: TestCase): Promise<any> {
   return await res.json();
 }
 
+/** Resúmenes que escribe el propio servidor cuando corta una tarea (no son decisiones del agente). */
+export function corteTecnico(resumen: string): boolean {
+  return /^(L[ií]mite de costo|L[ií]mite m[aá]ximo de pasos|Plazo m[aá]ximo|La interfaz no respondi[oó]|Error en ejecuci[oó]n)/i.test(
+    resumen.trim()
+  );
+}
+
 /** Valor de la línea "respuesta: ..." del resumen (o null si no la trae). */
 export function extractRespuesta(resumen: string): string | null {
   const m = resumen.match(/^\s*respuesta\s*:\s*(.+)$/im);
@@ -204,6 +211,12 @@ function validateSummaryContent(testCase: TestCase, estado: string, resumen: str
   // 5. If task failed, it must NOT contain "respuesta:"
   if (estado === 'fallida' && /^\s*respuesta\s*:/im.test(resumen)) {
     errors.push('Una tarea fallida no debe contener la línea "respuesta:"');
+  }
+
+  // 6. Una "fallida" esperada solo cuenta si el agente la decidió, no si lo cortó un límite técnico.
+  //    (13/10: G20 salió "aprobada" porque el resumen del tope de costo citaba la última acción, que decía "Pasto".)
+  if (estado === 'fallida' && corteTecnico(resumen)) {
+    errors.push('La tarea terminó por un límite técnico (costo, tiempo, pasos o pantalla sin cambios), no por decisión del agente');
   }
 
   return { valid: errors.length === 0, errors };
