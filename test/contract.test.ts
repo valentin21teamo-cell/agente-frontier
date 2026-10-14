@@ -428,3 +428,18 @@ test('Panel - la lista de tareas no expone la contraseña del escritorio', async
     await stopTestServer(server);
   }
 });
+
+test('HTTP Contract - POST /tasks rechaza un "modelo" con formato inválido (400) y acepta uno válido', async () => {
+  const { server, baseUrl } = await startTestServer();
+  try {
+    const headers = { Authorization: `Bearer ${TEST_TOKEN}`, 'Content-Type': 'application/json' };
+    const base = { tarea: 'x', escritorio: { url: 'ws://127.0.0.1:1', password: 'p' } };
+    const bad = await fetch(`${baseUrl}/tasks`, { method: 'POST', headers, body: JSON.stringify({ ...base, modelo: 'a b; rm -rf' }) });
+    assert.equal(bad.status, 400);
+    const ok = await fetch(`${baseUrl}/tasks`, { method: 'POST', headers, body: JSON.stringify({ ...base, modelo: 'anthropic/claude-sonnet-5.5' }) });
+    assert.equal(ok.status, 200);
+  } finally {
+    globalTaskStore.clearForTesting();
+    await stopTestServer(server);
+  }
+});

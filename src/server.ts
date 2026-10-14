@@ -144,6 +144,14 @@ app.post('/tasks', requireTeamAuth, (req: Request, res: Response) => {
     return;
   }
 
+  // Opcional (no es parte del contrato): elegir el modelo por tarea para comparar modelos con las mismas pruebas.
+  const modeloValido = (m: unknown) => typeof m === 'string' && /^[\w.\-/:]{3,100}$/.test(m);
+  const { modelo, modelo_localizador } = req.body || {};
+  if ((modelo !== undefined && !modeloValido(modelo)) || (modelo_localizador !== undefined && !modeloValido(modelo_localizador))) {
+    res.status(400).json({ error: 'Campo "modelo" o "modelo_localizador" inválido' });
+    return;
+  }
+
   try {
     const record = globalTaskStore.createTask({
       tarea: taskText.trim(),
@@ -152,6 +160,8 @@ app.post('/tasks', requireTeamAuth, (req: Request, res: Response) => {
         password: escritorio.password,
       },
       debug: Boolean(req.body.debug || process.env.DEBUG_SHOTS === '1'),
+      modelo,
+      modeloLocalizador: modelo_localizador,
     });
 
     res.status(200).json({ task_id: record.id });

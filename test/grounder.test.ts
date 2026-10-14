@@ -91,3 +91,50 @@ test('Teclas - alias comunes del modelo', () => {
   assert.equal(parseKeyCombo('pagedown').keysym, SPECIAL_KEYSYMS.Page_Down);
   assert.equal(parseKeyCombo('Enter').keysym, SPECIAL_KEYSYMS.Enter);
 });
+
+test('Grounder - modelos Claude: piden píxeles y devuelven el punto tal cual (sin escala 0-1000)', async () => {
+  const { groundTarget, parsePoint } = await import('../src/agent/grounder.js');
+  const { isAnthropicModel } = await import('../src/agent/openrouter.js');
+  assert.ok(isAnthropicModel('anthropic/claude-sonnet-5.5'));
+  assert.ok(!isAnthropicModel('google/gemini-2.5-flash'));
+  assert.deepEqual(parsePoint({ x: 818, y: 435 }, 1280, 800), { x: 818, y: 435 });
+  assert.equal(parsePoint({ x: null, y: null }, 1280, 800), null);
+  assert.equal(parsePoint({ x: 1500, y: 10 }, 1280, 800), null, 'fuera de la imagen');
+  const prompts: string[] = [];
+  const llm = {
+    async callVisionJson(p: { model: string; text: string }) {
+      prompts.push(p.text);
+      return { json: { x: 818, y: 435 }, costUsd: 0.001 };
+    },
+  };
+  const png = (await import('pngjs')).PNG;
+  const img = new png({ width: 1280, height: 800 });
+  const g = await groundTarget(llm as any, png.sync.write(img), "botón 'Entendido'", 1280, 800, {
+    model: 'anthropic/claude-sonnet-5.5',
+    zoom: false,
+  });
+  assert.deepEqual(g.point, { x: 818, y: 435 }, 'un valor < 1000 NO se interpreta como normalizado');
+  assert.ok(prompts[0].includes('1280x800 pixels'));
+});
+
+test('OpenRouter - a Claude no se le envía modo de razonamiento ni response_format; a Gemini sí', async () => {
+  const { OpenRouterClient } = await import('../src/agent/openrouter.js');
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = 'sk-or-test';
+  const bodies: any[] = [];
+  globalThis.fetch = (async (_u: any, init: any) => {
+    bodies.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: '{"x":1,"y":2}' } }], usage: { cost: 0 } }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const c = new OpenRouterClient();
+    await c.callVisionJson({ model: 'anthropic/claude-sonnet-5.5', text: 't', imagePng: Buffer.from('x') });
+    await c.callVisionJson({ model: 'google/gemini-2.5-flash', text: 't', imagePng: Buffer.from('x') });
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = prevKey;
+  }
+  assert.ok(!('reasoning' in bodies[0]) && !('response_format' in bodies[0]), JSON.stringify(bodies[0]));
+  assert.ok('reasoning' in bodies[1] && 'response_format' in bodies[1]);
+});

@@ -31,6 +31,9 @@ export interface TaskRecord {
   trace?: string[];
   /** Capturas de cada paso (diagnóstico, máx. 30; se liberan al rato de terminar). */
   shots?: Buffer[];
+  /** Modelos para esta tarea (experimentos de comparación); por defecto MODEL_ID / GROUNDING_MODEL_ID. */
+  modelo?: string;
+  modeloLocalizador?: string;
 }
 
 export type TaskWorkerRunner = (task: TaskRecord) => Promise<void>;
@@ -100,7 +103,13 @@ export class TaskStore {
    * Otherwise, task is enqueued in FIFO order.
    * Internal deadline is counted from the exact moment of creation (POST /tasks).
    */
-  public createTask(params: { tarea: string; escritorio: DesktopConfig; debug?: boolean }): TaskRecord {
+  public createTask(params: {
+    tarea: string;
+    escritorio: DesktopConfig;
+    debug?: boolean;
+    modelo?: string;
+    modeloLocalizador?: string;
+  }): TaskRecord {
     const id = randomUUID();
     const abortController = new AbortController();
 
@@ -119,6 +128,8 @@ export class TaskStore {
       costUsd: 0,
       debug: params.debug,
       cleanupCallbacks: [],
+      modelo: params.modelo,
+      modeloLocalizador: params.modeloLocalizador,
     };
 
     // Schedule internal task deadline counting from arrival time

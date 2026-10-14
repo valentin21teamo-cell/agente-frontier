@@ -193,22 +193,22 @@
       <div class="card">
         <h2>Tasa de éxito por prueba</h2>
         <div class="row" style="margin-bottom:10px">
-          <label for="ver" style="margin:0">Versión</label>
+          <label for="ver" style="margin:0">Versión · modelo</label>
           <select id="ver" style="width:auto"></select>
         </div>
         <div class="bars" id="bBars"></div>
       </div>
       <div class="card">
-        <h2>Evolución por versión</h2>
+        <h2>Comparación por versión y modelo</h2>
         <div id="bTrend"></div>
-        <div class="note">Porcentaje de pruebas aprobadas por versión desplegada, en orden de fecha.</div>
+        <div class="note">Porcentaje de pruebas aprobadas por versión desplegada y modelo, en orden de fecha.</div>
       </div>
     </div>
     <div class="card">
       <h2>Corridas</h2>
       <div class="scroll">
         <table>
-          <thead><tr><th>Fecha</th><th>Versión</th><th>Prueba</th><th>Resultado</th><th>Pasos</th><th>Tiempo</th><th>Costo</th><th>Motivo / resumen</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Versión · modelo</th><th>Prueba</th><th>Resultado</th><th>Pasos</th><th>Tiempo</th><th>Costo</th><th>Motivo / resumen</th></tr></thead>
           <tbody id="bRows"></tbody>
         </table>
       </div>
@@ -412,11 +412,13 @@
     renderBench();
   };
   // "agente-frontier-00036-ghi" -> "00036-ghi" (revisión de Cloud Run sin el nombre del servicio)
-  const shortVer = (v) => String(v).replace(/^.*?-(\d{5}-[a-z0-9]+)$/, '$1');
+  // Grupo de comparación = versión desplegada + modelo usado en la corrida (si se eligió uno).
+  const grupo = (r) => (r.modelo && r.modelo !== 'predeterminado' ? `${r.version} · ${String(r.modelo).split('/').pop()}` : r.version);
+  const shortVer = (v) => String(v).replace(/^.*?-(\d{5}-[a-z0-9]+)/, '$1');
   let newData = false;
   function versions(rows) {
     const first = new Map();
-    for (const r of rows) if (!first.has(r.version) || r.fecha < first.get(r.version)) first.set(r.version, r.fecha);
+    for (const r of rows) { const g = grupo(r); if (!first.has(g) || r.fecha < first.get(g)) first.set(g, r.fecha); }
     return [...first.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([v]) => v);
   }
   function renderBench() {
@@ -430,7 +432,7 @@
     sel.value = keep ? prev : vers.length ? vers[vers.length - 1] : '*';
     newData = false;
     sel.onchange = renderBench;
-    const cur = sel.value === '*' ? rows : rows.filter((r) => r.version === sel.value);
+    const cur = sel.value === '*' ? rows : rows.filter((r) => grupo(r) === sel.value);
 
     const ok = cur.filter((r) => r.aprobada).length;
     const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
@@ -454,7 +456,7 @@
 
     $('bRows').replaceChildren(...cur.slice(0, 300).map((r) => el('tr', {},
       el('td', { class: 'mono', text: new Date(r.fecha).toLocaleString('es-CO') }),
-      el('td', { class: 'mono', text: r.version }),
+      el('td', { class: 'mono', text: grupo(r) }),
       el('td', { text: r.id }),
       el('td', {}, el('span', { class: `badge ${r.aprobada ? 'b-ok' : 'b-bad'}`, text: r.aprobada ? 'aprobada' : 'no aprobada' })),
       el('td', { text: String(r.pasos ?? '—') }),
@@ -466,7 +468,7 @@
   function renderTrend(rows, vers) {
     const box = $('bTrend');
     if (!vers.length) { box.replaceChildren(el('div', { class: 'empty', text: 'Sin datos' })); return; }
-    const pts = vers.map((v) => { const rs = rows.filter((r) => r.version === v); return { v, p: rs.filter((r) => r.aprobada).length / rs.length, n: rs.length }; });
+    const pts = vers.map((v) => { const rs = rows.filter((r) => grupo(r) === v); return { v, p: rs.filter((r) => r.aprobada).length / rs.length, n: rs.length }; });
     const W = 560, H = 220, L = 36, R = 12, T = 12, B = 46;
     const x = (i) => (pts.length === 1 ? (L + W - R) / 2 : L + (i * (W - L - R)) / (pts.length - 1));
     const y = (p) => T + (1 - p) * (H - T - B);

@@ -10,6 +10,7 @@
  */
 
 import { Rect, cropAndScale, zoomRect } from './imageOps.js';
+import { isAnthropicModel } from './openrouter.js';
 
 export interface VisionJsonCaller {
   callVisionJson(params: {
@@ -28,8 +29,34 @@ export interface GroundOutcome {
   costUsd: number;
 }
 
-export function groundingModel(): string {
-  return (process.env.GROUNDING_MODEL_ID || 'google/gemini-2.5-flash').trim();
+export function groundingModel(override?: string): string {
+  return (override || process.env.GROUNDING_MODEL_ID || 'google/gemini-2.5-flash').trim();
+}
+
+/**
+ * Prompt para modelos entrenados en "computer use" (Claude): piden el punto en píxeles de la imagen tal cual.
+ * 1280x800 está por debajo del tamaño en que la API reduce imágenes, así que los píxeles son los de la pantalla.
+ */
+export function pointPrompt(objetivo: string, w: number, h: number, zoomed: boolean): string {
+  return [
+    'You are operating a desktop application from a screenshot.',
+    zoomed ? 'The image is a zoomed-in crop of the screen.' : 'The image is a full screenshot of the screen.',
+    `The image is exactly ${w}x${h} pixels.`,
+    `Find this UI element: ${objetivo}`,
+    'Return ONLY JSON: {"x": <integer>, "y": <integer>} = the pixel coordinates of the CENTER of that element in this image,',
+    'where you would click. If it is not visible, return {"x": null, "y": null}.',
+  ].join('\n');
+}
+
+/** {"x":..,"y":..} en píxeles de la imagen enviada -> punto dentro de la imagen, o null. */
+export function parsePoint(json: unknown, imgW: number, imgH: number): { x: number; y: number } | null {
+  if (!json || typeof json !== 'object') return null;
+  const o = json as Record<string, unknown>;
+  const x = Number(o.x);
+  const y = Number(o.y);
+  if (o.x === null || o.y === null || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (x < 0 || y < 0 || x > imgW || y > imgH) return null;
+  return { x, y };
 }
 
 export function groundPrompt(objetivo: string, zoomed: boolean): string {
@@ -94,9 +121,10 @@ export async function groundTarget(
   objetivo: string,
   screenW: number,
   screenH: number,
-  opts: { abortSignal?: AbortSignal; zoom?: boolean } = {}
+  opts: { abortSignal?: AbortSignal; zoom?: boolean; model?: string } = {}
 ): Promise<GroundOutcome> {
-  const model = groundingModel();
+  const model = groundingModel(opts.model);
+  if (isAnthropicModel(model)) return groundByPoint(llm, model, screenshotPng, objetivo, screenW, screenH, opts);
   let costUsd = 0;
 
   // Pasada 1: pantalla completa.
@@ -145,4 +173,49 @@ export async function groundTarget(
     via,
     costUsd,
   };
+}
+
+/** Localización con modelos que devuelven píxeles (Claude). Segunda pasada ampliada x2 opcional. */
+async function groundByPoint(
+  llm: VisionJsonCaller,
+  model: string,
+  screenshotPng: Buffer,
+  objetivo: string,
+  screenW: number,
+  screenH: number,
+  opts: { abortSignal?: AbortSignal; zoom?: boolean }
+): Promise<GroundOutcome> {
+  let costUsd = 0;
+  const first = await llm.callVisionJson({
+    model,
+    text: pointPrompt(objetivo, screenW, screenH, false),
+    imagePng: screenshotPng,
+    abortSignal: opts.abortSignal,
+  });
+  costUsd += first.costUsd;
+  const p1 = parsePoint(first.json, screenW, screenH);
+  if (!p1) return { point: null, box: null, via: 'none', costUsd };
+  let point = { x: Math.round(p1.x), y: Math.round(p1.y) };
+  let via: GroundOutcome['via'] = 'full';
+  if (opts.zoom) {
+    const scale = 2;
+    const { png, rect } = cropAndScale(screenshotPng, zoomRect(p1.x, p1.y, 80, 30, screenW, screenH), scale);
+    try {
+      const second = await llm.callVisionJson({
+        model,
+        text: pointPrompt(objetivo, rect.w * scale, rect.h * scale, true),
+        imagePng: png,
+        abortSignal: opts.abortSignal,
+      });
+      costUsd += second.costUsd;
+      const p2 = parsePoint(second.json, rect.w * scale, rect.h * scale);
+      if (p2) {
+        point = { x: Math.round(rect.x + p2.x / scale), y: Math.round(rect.y + p2.y / scale) };
+        via = 'zoom';
+      }
+    } catch {
+      // se queda con la primera pasada
+    }
+  }
+  return { point, box: { x: point.x - 5, y: point.y - 5, w: 10, h: 10 }, via, costUsd };
 }

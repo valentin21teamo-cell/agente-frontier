@@ -13,6 +13,7 @@ import WebSocket from 'ws';
 import { sanitize } from '../src/security/sanitize.js';
 
 dotenv.config();
+dotenv.config({ path: '.env.escritorio', override: true });
 
 const lines: string[] = [];
 const log = (s: string) => {

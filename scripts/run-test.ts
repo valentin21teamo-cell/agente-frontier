@@ -16,6 +16,16 @@ import dotenv from 'dotenv';
 import { safeLogger, sanitize } from '../src/security/sanitize.js';
 
 dotenv.config();
+// Valores del escritorio de prueba propio (los escribe Claude en el PC sin tocar el .env con los secretos).
+dotenv.config({ path: '.env.escritorio', override: true });
+
+/** --modelo X / --localizador Y: comparar modelos con las mismas pruebas (se envía por tarea al agente). */
+function argValue(flag: string): string | undefined {
+  const i = process.argv.indexOf(flag);
+  return i > 0 ? process.argv[i + 1] : undefined;
+}
+const MODELO = argValue('--modelo');
+const LOCALIZADOR = argValue('--localizador');
 
 const DESKTOP_HTTP = process.env.DESKTOP_HTTP_URL || '';
 const DESKTOP_TOKEN = process.env.DESKTOP_TOKEN || '';
@@ -70,6 +80,8 @@ function appendHistory(rep: RunReport, version: string, ronda: number) {
     fecha: new Date().toISOString(),
     version,
     ronda,
+    modelo: MODELO || 'predeterminado',
+    localizador: LOCALIZADOR || 'predeterminado',
     id: rep.id,
     aprobada: rep.aprobada,
     estado: rep.estadoFinal,
@@ -224,6 +236,8 @@ export async function runBenchmarkTask(testCase: TestCase): Promise<RunReport> {
         password: DESKTOP_PASSWORD,
       },
       debug: Boolean(process.env.DEBUG_SHOTS === '1'),
+      ...(MODELO ? { modelo: MODELO } : {}),
+      ...(LOCALIZADOR ? { modelo_localizador: LOCALIZADOR } : {}),
     }),
   });
 
@@ -393,6 +407,7 @@ async function main() {
   //   all 3  -> corre las 5 pruebas tres veces y muestra la tasa de éxito de cada una.
   const targetArg = process.argv[2] || 'E1';
   const rondas = Math.max(1, Math.min(10, Number(process.argv[3]) || 1));
+  if (MODELO || LOCALIZADOR) console.log(`[Runner] Modelos para esta corrida: planificador ${MODELO || '(el del servidor)'} | localizador ${LOCALIZADOR || '(el del servidor)'}`);
   const pruebasDir = path.resolve('pruebas');
 
   const orderedFiles = [

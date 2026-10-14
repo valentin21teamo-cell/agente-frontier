@@ -157,6 +157,11 @@ const ACTION_FORMATS = [
   'Responde ÚNICAMENTE el objeto JSON.',
 ].join('\n');
 
+/** Modelos de Anthropic (Claude): entrenados para operar computadores por capturas; se les piden píxeles. */
+export function isAnthropicModel(model: string): boolean {
+  return /^anthropic\/|claude/i.test(model);
+}
+
 export class OpenRouterClient implements VisionJsonCaller {
   private get apiKey(): string {
     const key = process.env.OPENROUTER_API_KEY;
@@ -212,8 +217,11 @@ export class OpenRouterClient implements VisionJsonCaller {
             temperature: 0.1,
             // Los modelos con razonamiento gastan parte de este tope pensando: si es bajo, el JSON sale cortado.
             max_tokens: params.maxTokens ?? 4096,
-            reasoning: { effort: 'low' },
-            response_format: { type: 'json_object' },
+            // Claude: sin modo de razonamiento (exige temperatura 1) ni response_format (no todos los proveedores
+            // lo aceptan); el JSON se extrae igual con parseLooseJson.
+            ...(isAnthropicModel(params.model)
+              ? {}
+              : { reasoning: { effort: 'low' }, response_format: { type: 'json_object' } }),
           }),
           signal: params.abortSignal,
         });
@@ -279,6 +287,8 @@ export class OpenRouterClient implements VisionJsonCaller {
     remainingSeconds?: number;
     screenText?: string;
     abortSignal?: AbortSignal;
+    /** Modelo del planificador para esta tarea (por defecto MODEL_ID). */
+    model?: string;
   }): Promise<PlannerStepResult> {
     const history = params.actionHistory.slice(-30);
     const text = [
@@ -302,7 +312,7 @@ export class OpenRouterClient implements VisionJsonCaller {
     // Hasta 2 intentos si el JSON no se puede interpretar.
     for (let i = 0; i < 3; i++) {
       const { content, costUsd } = await this.callVision({
-        model: this.modelId,
+        model: params.model || this.modelId,
         systemPrompt: params.systemPrompt,
         text:
           i === 0

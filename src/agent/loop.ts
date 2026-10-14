@@ -17,7 +17,7 @@ import { TaskRecord, globalTaskStore } from '../tasks/store.js';
 import { RfbClient } from '../rfb/client.js';
 import { OpenRouterClient, AgentAction } from './openrouter.js';
 import { safeLogger } from '../security/sanitize.js';
-import { groundTarget } from './grounder.js';
+import { groundingModel, groundTarget } from './grounder.js';
 import { ocrScreenshot, ocrRegion, findTextMatches, findFieldNearLabel, extractTargetText, screenTextForPrompt, OcrWord } from './ocr.js';
 import { applyLadder, TriedPoint } from './clickLadder.js';
 
@@ -93,7 +93,7 @@ function buildFailSummary(action: AgentAction): string {
 }
 
 export async function runAgentTask(task: TaskRecord): Promise<void> {
-  if (!process.env.MODEL_ID || process.env.MODEL_ID.trim().length === 0) {
+  if (!task.modelo && (!process.env.MODEL_ID || process.env.MODEL_ID.trim().length === 0)) {
     safeLogger.warn(`[Agent] Tarea ${task.id} fallida: MODEL_ID no está configurada.`);
     globalTaskStore.finalizeTask(
       task.id,
@@ -132,6 +132,7 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
     const l = `[${((Date.now() - t0) / 1000).toFixed(1)}s] ${line}`;
     if (task.trace!.length < 400) task.trace!.push(l);
   };
+  trace(`Modelos: planificador ${task.modelo || router.modelId} | localizador ${groundingModel(task.modeloLocalizador)}`);
 
   /** Último punto donde se hizo clic: las opciones de una lista desplegable aparecen cerca de él. */
   let lastClick: { x: number; y: number } | null = null;
@@ -177,7 +178,11 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
           ? `${(action.objetivo ?? 'elemento').trim()} (texto visible: "${action.texto}")`
           : (action.objetivo ?? '').trim();
         const tG = Date.now();
-        const g = await groundTarget(router, screenshot, desc, client.width, client.height, { abortSignal: signal, zoom: groundZoom });
+        const g = await groundTarget(router, screenshot, desc, client.width, client.height, {
+          abortSignal: signal,
+          zoom: groundZoom,
+          model: task.modeloLocalizador,
+        });
         costUsd += g.costUsd;
         trace(`    Visión ${((Date.now() - tG) / 1000).toFixed(1)}s -> ${g.point ? `(${g.point.x},${g.point.y})` : 'no encontrado'}`);
         visionPoint = g.point;
@@ -426,6 +431,7 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         remainingSeconds: Math.round((deadlineAt - Date.now()) / 1000),
         screenText,
         abortSignal: signal,
+        model: task.modelo,
       });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
