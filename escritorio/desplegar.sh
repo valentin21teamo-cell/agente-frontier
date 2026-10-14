@@ -17,8 +17,8 @@ if [[ -f "$ARCHIVO" ]]; then
   DESKTOP_PASSWORD="$(grep '^DESKTOP_PASSWORD=' "$ARCHIVO" | cut -d'"' -f2)"
 else
   DESKTOP_TOKEN="$(openssl rand -hex 24)"
-  # VNC usa como máximo 8 caracteres de la contraseña.
-  DESKTOP_PASSWORD="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 8)"
+  # VNC usa como máximo 8 caracteres de la contraseña. (Sin tuberías: con pipefail, "tr | head" moría en silencio.)
+  DESKTOP_PASSWORD="$(openssl rand -hex 4)"
 fi
 
 echo "== 1/3 Construyendo y desplegando $SERVICE (tarda unos minutos) =="
