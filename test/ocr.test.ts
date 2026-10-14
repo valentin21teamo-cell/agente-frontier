@@ -197,3 +197,20 @@ test('OCR - lista desplegable "Ciudad" en el formulario de GESTORA: se ubica el 
   const p = findFieldNearLabel(buf, label.box);
   assert.ok(p && p.x > 253 && p.x < 435 && p.y > 268 && p.y < 290, JSON.stringify(p));
 });
+
+test('OCR - área de texto de varias líneas ("Notas", GESTORA): se ubica dentro del cuadro alto', { timeout: 60000 }, async (t) => {
+  if (!(await ocrAvailable())) { t.skip('Tesseract no está instalado'); return; }
+  // Antes el buscador solo aceptaba cajas de 14-48 px de alto y el agente escribía en (119,372), fuera del cuadro.
+  const buf = fs.readFileSync('test/fixtures/gestora-form.png');
+  const label = findTextMatches(await ocrScreenshot(buf), 'Notas')[0];
+  assert.ok(label, 'debe leer la etiqueta');
+  const p = findFieldNearLabel(buf, label.box);
+  assert.ok(p && p.x > 253 && p.x < 673 && p.y > 335 && p.y < 409, JSON.stringify(p));
+});
+
+test('OCR - etiqueta con dos puntos gana a la cabecera de columna con el mismo nombre ("Estado:" vs "Estado")', { timeout: 60000 }, async (t) => {
+  if (!(await ocrAvailable())) { t.skip('Tesseract no está instalado'); return; }
+  const buf = fs.readFileSync('test/fixtures/gestora-pedidos.png');
+  const m = findTextMatches(await ocrScreenshot(buf), 'Estado:')[0];
+  assert.ok(m && m.box.y < 140, `debe elegir el filtro de arriba (y≈121), no la cabecera (y≈159): ${JSON.stringify(m?.box)}`);
+});

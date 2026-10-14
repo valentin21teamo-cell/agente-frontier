@@ -358,8 +358,12 @@ export function findTextMatches(words: OcrWord[], target: string): TextMatch[] {
       const slice = lineWords.slice(i, i + want.length);
       const conf = slice.reduce((s, w) => s + w.conf, 0) / slice.length / 100;
       const standalone = lt.length === want.length;
-      const exactCase = slice.map((w) => w.text).join(' ').replace(/[.,:;]+$/, '') === target.trim();
-      const score = (q / want.length) * 0.6 + conf * 0.3 + (standalone ? 0.2 : 0) + (exactCase ? 0.1 : 0);
+      const raw = slice.map((w) => w.text).join(' ');
+      const exactCase = raw.replace(/[.,:;]+$/, '') === target.trim().replace(/[.,:;]+$/, '');
+      // Una etiqueta de formulario se pide con ":" ("Estado:"); la cabecera de una columna con el mismo
+      // nombre no lo lleva. Sin este desempate se escribía en la tabla (medido en GESTORA, 14/10).
+      const colon = /:\s*$/.test(target) && /:\s*$/.test(raw);
+      const score = (q / want.length) * 0.6 + conf * 0.3 + (standalone ? 0.2 : 0) + (exactCase ? 0.1 : 0) + (colon ? 0.3 : 0);
       found.push({ text: slice.map((w) => w.text).join(' '), box: union(slice.map((w) => w.box)), score, standalone });
     }
   }
@@ -409,17 +413,35 @@ export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y:
     }
     return hits / total >= 0.85;
   };
-  /** Dado un punto que está dentro de una posible caja, busca sus bordes superior e inferior rectos. */
-  const boxAround = (x: number, y: number): { top: number; bottom: number } | null => {
+  /** ¿Hay una línea vertical continua en x (±1) entre y0 e y1? (borde izquierdo de una caja alta) */
+  const vLine = (x: number, y0: number, y1: number) => {
+    let hits = 0;
+    let total = 0;
+    for (let y = y0 + 2; y <= y1 - 2; y += 3) {
+      total++;
+      if (edgeV(x, y) || edgeV(x - 1, y) || edgeV(x + 1, y)) hits++;
+    }
+    return total > 0 && hits / total >= 0.85;
+  };
+  /**
+   * Dado un punto que está dentro de una posible caja, busca sus bordes superior e inferior rectos.
+   * leftX: si se conoce el borde izquierdo, se aceptan cajas altas (áreas de texto de varias líneas)
+   * siempre que ese borde sea una línea vertical continua entre arriba y abajo.
+   */
+  const boxAround = (x: number, y: number, leftX?: number): { top: number; bottom: number } | null => {
     let top = -1;
     let bottom = -1;
-    for (let d = 2; d <= 26; d++) {
+    const reach = leftX === undefined ? 26 : 110;
+    for (let d = 2; d <= reach; d++) {
       if (top < 0 && y - d > 0 && edgeH(x, y - d) && hLine(x, y - d, 50)) top = y - d;
       if (bottom < 0 && y + d < H - 1 && edgeH(x, y + d) && hLine(x, y + d, 50)) bottom = y + d;
     }
     if (top < 0 || bottom < 0) return null;
     const h = bottom - top;
-    return h >= 14 && h <= 48 ? { top, bottom } : null;
+    if (h >= 14 && h <= 48) return { top, bottom };
+    // Área de texto (p. ej. "Notas", 4 líneas ≈ 70 px): solo si el borde izquierdo la cierra de arriba abajo.
+    if (leftX !== undefined && h > 48 && h <= 220 && vLine(leftX, top, bottom)) return { top, bottom };
+    return null;
   };
 
   const lcy = label.y + label.h / 2;
@@ -432,7 +454,7 @@ export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y:
   const cy = Math.round(lcy);
   for (let x = Math.round(label.x + label.w + 3); x < Math.min(W - 60, label.x + label.w + 420); x++) {
     if (!edgeV(x, cy)) continue;
-    const box = boxAround(x + 6, cy);
+    const box = boxAround(x + 6, cy, x);
     if (box) {
       const px = x + 25;
       const py = Math.round((box.top + box.bottom) / 2);

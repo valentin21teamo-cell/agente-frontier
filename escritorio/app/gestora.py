@@ -9,6 +9,7 @@ Uso: python3 gestora.py --db /ruta/gestora.db [--listo /tmp/app-listo]
 
 import argparse
 import json
+import os
 import sqlite3
 import tkinter as tk
 from tkinter import ttk
@@ -106,7 +107,47 @@ class Gestora:
         ayuda.add_command(label="Acerca de", command=lambda: self.aviso(
             "Acerca de", "GESTORA ERP v3.1 — aplicación de prueba con datos ficticios."))
 
+    def volcar_geometria(self):
+        """Solo para medir el localizador del agente (variable GESTORA_GEOMETRIA): escribe en JSON cada campo
+        visible con su etiqueta y su caja real en pantalla. Es la "verdad" contra la que se compara el agente."""
+        ruta = os.environ.get("GESTORA_GEOMETRIA")
+        if not ruta:
+            return
+        self.root.update_idletasks()
+        caja = lambda w: {"x": w.winfo_rootx(), "y": w.winfo_rooty(), "w": w.winfo_width(), "h": w.winfo_height()}
+        pares = []
+
+        def visitar(padre):
+            hijos = [h for h in padre.winfo_children() if h.winfo_ismapped()]
+            por_fila = {}
+            anterior = None
+            for h in hijos:
+                clase = h.winfo_class()
+                info = h.grid_info() if h.winfo_manager() == "grid" else None
+                if info:
+                    por_fila.setdefault(int(info["row"]), {})[int(info["column"])] = h
+                elif clase == "Label":
+                    anterior = h
+                elif clase in ("TEntry", "TCombobox", "Text") and anterior is not None:
+                    pares.append({"etiqueta": anterior.cget("text"), "tipo": clase, "campo": caja(h), "caja_etiqueta": caja(anterior)})
+                    anterior = None
+                elif clase not in ("Label",):
+                    anterior = None if clase in ("TButton",) else anterior
+                visitar(h)
+            for fila in por_fila.values():
+                if 0 in fila and 1 in fila and fila[0].winfo_class() == "Label":
+                    pares.append({"etiqueta": fila[0].cget("text"), "tipo": fila[1].winfo_class(),
+                                  "campo": caja(fila[1]), "caja_etiqueta": caja(fila[0])})
+
+        visitar(self.contenido)
+        temporal = ruta + ".tmp"
+        with open(temporal, "w", encoding="utf-8") as fh:
+            json.dump({"pantalla": self.contenido.winfo_children()[0].cget("text") if self.contenido.winfo_children() else "",
+                       "pares": pares}, fh, ensure_ascii=False)
+        os.replace(temporal, ruta)  # atómico: quien lee nunca ve el archivo a medio escribir
+
     def limpiar(self, titulo: str):
+        self.root.after(500, self.volcar_geometria)
         self.cerrar_overlay()
         for w in self.contenido.winfo_children():
             w.destroy()
