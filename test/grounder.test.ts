@@ -175,3 +175,11 @@ test('OpenRouter - planificador con Claude: reglas+formato en el sistema con cac
   assert.ok(userText.includes('acción 34 ') && !userText.includes('x'.repeat(300)), 'entradas recortadas');
   assert.equal(typeof bodies[1].messages[0].content, 'string', 'Gemini recibe el sistema como texto');
 });
+
+test('OpenRouter - si la respuesta no trae usage.cost, el precio de respaldo depende del modelo (antes era el de Flash para todos)', async () => {
+  const { fallbackPrice } = await import('../src/agent/openrouter.js');
+  assert.deepEqual(fallbackPrice('google/gemini-2.5-flash'), [0.3, 2.5]);
+  assert.deepEqual(fallbackPrice('anthropic/claude-sonnet-5.5'), [2, 10]);
+  const [pin, pout] = fallbackPrice('proveedor/modelo-desconocido');
+  assert.ok(pin >= 2 && pout >= 10, 'un modelo desconocido se cobra caro para que el tope por tarea no se quede corto');
+});

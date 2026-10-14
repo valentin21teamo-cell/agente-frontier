@@ -15,3 +15,6 @@ debug/
 
 # Datos de acceso al escritorio de prueba (nunca al repo)
 escritorio.env
+
+# Caché de Python del escritorio de prueba
+__pycache__/

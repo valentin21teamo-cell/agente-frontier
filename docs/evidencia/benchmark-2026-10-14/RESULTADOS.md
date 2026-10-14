@@ -64,11 +64,30 @@ TRM de referencia: COP 3.216,01 (07/10/2026).
 4. **Los 3 cortes de Sonnet fueron por el tope de US$ 0,25.** En G20, los pasos 5 a 9 se gastaron escribiendo en la cabecera de la tabla en vez de en el buscador, y los pasos 11 y 12 haciendo clic en la etiqueta "Ciudad" en vez de en la lista. Los dos errores son del buscador de campos del agente, no del modelo, y se corrigieron en 2f268d2. Ese commit trae una prueba con la captura real: falla con el código anterior y pasa con el nuevo.
 5. **Velocidad.** Cada paso tarda entre 12 y 20 s. El OCR, con 4 variantes y dos de ellas a 3 aumentos, toma 3–6 s y se hace dos veces por paso; el modelo, 3–5 s. Varias tareas aprobadas terminaron cerca del plazo de 285 s (G03: 280 s; G18: 291 s).
 
+## Revisión de las bitácoras después de la corrida (14/10, sin gastar)
+
+Contado en `consola-sonnet-5.5.txt`, que tiene 228 pasos del planificador:
+
+| Causa | Pasos o consultas perdidos | Estado |
+|---|---|---|
+| El submenú de Tk no abre al pasar el ratón | 17 pasos (uno en 17 de las 20 pruebas) | Corregido: el agente pulsa la tecla Derecha si no aparece un panel nuevo |
+| Escritura que cae en la cabecera de la tabla y se repite | 49 pasos | Corregido en c4eefe6 y en el commit de este análisis |
+| Lista desplegable nombrada por su valor (G15) | al menos 4 clics en la tabla | Corregido: 0/7 → 7/7 medido |
+| Consultas de visión con causa determinista | 50 de 70 | Corregido: cabecera contra etiqueta (19), "\|" en la etiqueta (17), puntero sobre el texto (14) |
+
+Los fallos de G04 y G15 vienen de estas causas. Con las decisiones reales de Claude repetidas en un guion, el agente actual completa los dos casos en el escritorio local, y G04 pasa `/__check`.
+
+Mediciones:
+- `../mediciones/localizador-2026-10-14-v2/`;
+- `../mediciones/simulacion-2026-10-14/`.
+
+**Estimación, no medición:** US$ 0,13–0,14 por tarea (≈ COP 420–450) y unos 150 s. Se confirma con la próxima corrida pagada.
+
 ## Lo que estas cifras NO dicen
 
 - **Es una sola ronda por modelo.** Con 20 pruebas, la diferencia entre 18 y 8 es grande, pero la tasa de cada prueba individual necesita varias rondas.
 - **Las 20 pruebas son de GESTORA, una aplicación que construimos nosotros.** Sirven para comparar versiones y modelos; no prometen el mismo resultado en otra aplicación.
-- **Las mejoras de 2f268d2 todavía no están medidas en el escritorio**; se miden en la siguiente corrida.
+- **Las mejoras posteriores a esta corrida (2f268d2 en adelante) todavía no están medidas con modelos.** Solo están medidas sin modelos: localizador y simulación. Se miden con modelos en la siguiente corrida pagada.
 
 ## Incidente de la corrida
 

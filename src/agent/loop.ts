@@ -18,7 +18,19 @@ import { RfbClient } from '../rfb/client.js';
 import { OpenRouterClient, AgentAction } from './openrouter.js';
 import { safeLogger } from '../security/sanitize.js';
 import { groundingModel, groundTarget } from './grounder.js';
-import { ocrIncremental, ocrRegion, findTextMatches, findFieldNearLabel, extractTargetText, screenTextForPrompt, OcrWord } from './ocr.js';
+import {
+  ocrIncremental,
+  ocrRegion,
+  findTextMatches,
+  findFieldNearLabel,
+  fieldContaining,
+  locateField,
+  submenuOpened,
+  normalizeText,
+  extractTargetText,
+  screenTextForPrompt,
+  OcrWord,
+} from './ocr.js';
 import { applyLadder, TriedPoint } from './clickLadder.js';
 
 const SYSTEM_PROMPT = `Eres un agente autónomo experto en operar software de gestión empresarial (aplicaciones de escritorio legadas) mediante capturas de pantalla, ratón y teclado.
@@ -181,6 +193,8 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
     const centerOf = (m: Match) => ({ x: Math.round(m.box.x + m.box.w / 2), y: Math.round(m.box.y + m.box.h / 2) });
     const finish = (m: Match, via: string): Resolved => {
       if (isField) {
+        const inside = fieldContaining(screenshot, m.box);
+        if (inside) return { x: inside.x, y: inside.y, via: `${via}+dentro`, costUsd };
         const field = findFieldNearLabel(screenshot, m.box);
         if (field) return { x: field.x, y: field.y, via: `${via}+campo`, costUsd };
         // Sin caja detectada: lo más común es etiqueta a la izquierda y campo a la derecha.
@@ -229,36 +243,45 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         const matches = findTextMatches(words, wanted);
         trace(`    OCR ${((Date.now() - tO) / 1000).toFixed(1)}s [${modo}], ${words.length} palabras; "${wanted}" -> ${matches.length} coincidencia(s)`);
 
+        if (matches.length > 0 && isField) {
+          const p = await locateField(screenshot, matches, vision, client.width);
+          return { ...p, costUsd };
+        }
+
         if (matches.length > 0) {
-          let best = matches[0];
-          const rivals = matches.filter((m) => m.score >= best.score - 0.1);
+          // Un botón tiene borde: si el objetivo es un botón y solo algunas coincidencias están dentro de una caja
+          // cerrada, valen esas. En la simulación de G15 (14/10), "Filtrar" ganó en la barra de estado ("pulse
+          // Filtrar.") porque la lectura del botón recién pulsado perdió puntaje.
+          let cands = matches;
+          if (/bot[oó]n|button/i.test(objetivoTxt) && matches.length > 1) {
+            const enCaja = matches.filter((m) => fieldContaining(screenshot, m.box));
+            if (enCaja.length > 0 && enCaja.length < matches.length) cands = enCaja;
+          }
+          let best = cands[0];
+          const rivals = cands.filter((m) => m.score >= best.score - 0.1);
           if (rivals.length > 1) {
             // Lista desplegable recién abierta: la opción está cerca del último clic.
             const near = lastClick
               ? rivals.filter((m) => Math.hypot(centerOf(m).x - lastClick!.x, centerOf(m).y - lastClick!.y) < 260)
               : [];
-            if (!isField && near.length > 0 && near.length < rivals.length) {
+            if (near.length > 0 && near.length < rivals.length) {
               best = nearestTo(near, lastClick!, 1);
             } else {
               const vp = await vision();
               if (vp) best = nearestTo(rivals, vp);
             }
           }
-          if (isField && matches.length > 1) {
-            // La etiqueta puede repetirse (p. ej. encabezado de tabla): vale la que tiene un campo al lado.
-            for (const cand of [best, ...matches.filter((m) => m !== best)].slice(0, 4)) {
-              const field = findFieldNearLabel(screenshot, cand.box);
-              if (field) return { x: field.x, y: field.y, via: `ocr("${cand.text}")+campo`, costUsd };
-            }
-          }
           return finish(best, `ocr("${best.text}")`);
         }
 
         // Frase no encontrada completa: palabras largas de la frase, desempatando con la visión.
+        // Solo coincidencias EXACTAS de cada palabra: con la tolerancia de 1 letra, "lista" (de "Exportar lista…")
+        // encontró "Listo." en la barra de estado y el agente hizo clic ahí (simulación con e124147, 14/10).
+        const limpio = (s: string) => normalizeText(s).replace(/[^a-z0-9ñ]/g, '');
         const partial = wanted
           .split(/\s+/)
-          .filter((t) => t.replace(/[^\p{L}\p{N}]/gu, '').length >= 4)
-          .flatMap((t) => findTextMatches(words, t));
+          .filter((t) => limpio(t).length >= 4)
+          .flatMap((t) => findTextMatches(words, t).filter((m) => limpio(m.text) === limpio(t)));
         const vp = await vision();
         if (partial.length > 0) {
           const pool = vp ? partial.filter((m) => Math.abs(centerOf(m).x - vp.x) < 220) : partial.length === 1 ? partial : [];
@@ -336,6 +359,20 @@ export async function runAgentTask(task: TaskRecord): Promise<void> {
         else {
           await client.movePath(p.x, p.y);
           await sleep(900);
+          // Submenú en cascada que no abre con el ratón: en GESTORA (Tk) pasa siempre, y 17 de las 20 pruebas del
+          // 13/10 gastaron un paso del planificador en descubrirlo. La tecla Derecha lo abre (Tk, Windows, GTK);
+          // solo se pulsa si a la derecha del puntero no apareció texto nuevo.
+          if (/men[uú]/i.test(action.objetivo ?? '')) {
+            const after = await client.captureScreenshotPng();
+            const despues = await leerPantalla(after);
+            if (!submenuOpened(screenshot, after, despues.words, p.x, p.y)) {
+              await client.sendKeyCombo('Right');
+              return {
+                note: `→ (${p.x},${p.y}) vía ${p.via}; el submenú no abrió con el ratón: se pulsó la tecla Derecha`,
+                costUsd: p.costUsd,
+              };
+            }
+          }
         }
         return { note: `→ (${p.x},${p.y}) vía ${p.via}`, costUsd: p.costUsd };
       }

@@ -25,6 +25,10 @@ Regla: lo que no tiene fuente adjunta se marca como **sin archivar** o **por con
 | 13/10 ~19:00 | 7104536 | Escritorio de prueba propio GESTORA ERP + 20 pruebas; OCR variante D; limpieza de campos más robusta; comparación exacta de respuestas |
 | 13/10 21:5x–23:00 | c588a2c, fba3dc4, 87f23df | Modelo elegible por tarea (Claude con localización en píxeles); escritorio publicado en Cloud Run por Andrés (`desplegar.sh`) |
 | 13/10 23:00–14/10 01:34 | — (corridas) | Banco GESTORA con la revisión 00030: Claude Sonnet 5.5 aprobó 18/20 (17 legítimas) y Gemini 2.5 Flash 8/20. Detalle en `benchmark-2026-10-14/RESULTADOS.md` |
+| 13/10 23:18 y 14/10 00:24 | 2f268d2, 321a944 | Buscador de campos: el campo de la derecha gana a la tabla de abajo. El runner ya no aprueba un corte por límite técnico. Se hicieron durante las corridas pero se subieron a las 01:38 junto con b3208db, después de que terminó la ronda de Flash (01:34). Fuente: `git reflog` de `origin/main` |
+| 14/10 06:58 | c4eefe6 | Localizador de campos: 11/24 → 23/24, medido sin gastar en modelos (`mediciones/localizador-campos-2026-10-14.md`) |
+| 14/10 07:05 | e124147 | OCR incremental (4,9 → 1,2 s al mover el puntero, medición archivada) y prompt más barato (caché de Anthropic, historial más corto). Subido con c4eefe6 a las 07:06; desplegado como revisión 00032 |
+| 14/10 07:3x | — (configuración, aprobada por Andrés) | Revisión `agente-frontier-00033-6bf`: `MODEL_ID` y `GROUNDING_MODEL_ID` = `anthropic/claude-sonnet-5.5`; `MAX_COST_USD_PER_TASK` 0,25 → 0,40. Aplicado en la consola de Cloud Run; `/health` confirmó la revisión. Las claves secretas no se tocaron |
 
 ## Incidentes
 
@@ -67,6 +71,36 @@ Regla: lo que no tiene fuente adjunta se marca como **sin archivar** o **por con
 ### OCR: variante D (inversión local), 13/10
 - Captura real de SIGECOM con el modal de novedades: las variantes A+B+C leían 28 palabras distintas y con D, 50. El fondo atenuado detrás del modal antes no se leía.
 - En GESTORA, la opción resaltada de un menú (texto blanco sobre azul oscuro) tampoco se leía con D. Se cambió el resaltado del menú de la app a un color claro. En apps reales, ese caso queda a cargo del respaldo de visión.
+
+### Localizador de campos (14/10, sin modelos)
+- 11/24 → 23/24 campos con el punto dentro de su caja real. Detalle y salida completa en `mediciones/localizador-campos-2026-10-14.md`.
+- **Segunda medición**, con el buscador de e124147 como "antes", en la misma corrida:
+  - por etiqueta: 28/28 → 28/28;
+  - lista desplegable nombrada por su valor, el caso de G15: **0/7 → 7/7**.
+  - Detalle en `mediciones/localizador-2026-10-14-v2/`.
+
+### Simulación del agente completo sin modelos (14/10)
+- `scripts/simular-tarea.ts` intercepta las llamadas a OpenRouter. El planificador sigue un guion con las decisiones reales de Claude del 13/10; las consultas de visión se cuentan, sin pagarlas.
+- Cuatro guiones: submenú, G15, búsqueda y G04.
+  - e124147 (lo desplegado): **0/4**, con 11 consultas de visión.
+  - Este commit: **4/4**, con 0 consultas.
+  - G04 pasa `/__check`.
+- No mide al planificador. Detalle en `mediciones/simulacion-2026-10-14/`.
+- **Corrección de una cifra mía.** Dije que el submenú costó un paso en 11 de las 20 pruebas. Contado en la bitácora: fueron **17 de 20**.
+
+### Pasos perdidos en la corrida pagada de Sonnet (13/10), contados en la bitácora
+- **17 de 228 pasos** se fueron abriendo el submenú.
+- **49 pasos** repitieron la escritura en un campo que ya se había intentado llenar.
+- De las 70 consultas de visión, **50** tuvieron causa determinista, ya corregida:
+  - 19: la cabecera de la tabla compitiendo con la etiqueta;
+  - 17: el "|" en la etiqueta;
+  - 14: el puntero tapando el texto.
+- Estimación, no medida: US$ 0,19 → 0,13–0,14 por tarea. Se confirma solo con una corrida pagada.
+
+### OCR incremental (14/10, sin modelos)
+- Capturas reales de GESTORA en un equipo de 2 CPU, OCR completo contra incremental: 4,9 → 1,2 s al mover el puntero, 2,3 → 1,4 s al escribir un nombre, 2,8 → 2,1 s al abrir una lista. De 12 textos comprobados, 11 quedaron en el mismo punto y uno a 1 px. Detalle, capturas y salida en `mediciones/ocr-incremental-2026-10-14/`. Prueba automática en `test/ocr.test.ts` (commit e124147).
+- El mensaje del commit e124147 da cifras de una primera medición que no se archivó (4,7 → 1,4 s, 2,3 → 1,2 s, 2,7 → 2,0 s, "mismas posiciones"). Las que valen son las archivadas.
+- Lo que no está medido: cuánto baja el tiempo y el costo por tarea completa. Se mide en la próxima corrida autorizada.
 
 ### OCR: variantes de preprocesamiento (12/10, medido en este repo)
 - Detalle completo en `mediciones/ocr-variantes-2026-10-12.md`.

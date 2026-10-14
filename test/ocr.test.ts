@@ -235,3 +235,70 @@ test('OCR incremental: tras escribir en un campo solo relee esa zona y los texto
   const igual = await ocrIncremental(despues, { png: despues, words: inc.words });
   assert.equal(igual.modo, 'igual', 'sin cambios no se vuelve a leer');
 });
+
+test('OCR - lista desplegable nombrada por su valor ("Pagada", G15): el clic va a la lista, no a las 15 filas de la tabla', { timeout: 90000 }, async (t) => {
+  if (!(await ocrAvailable())) { t.skip('Tesseract no está instalado'); return; }
+  const { locateField, fieldContaining } = await import('../src/agent/ocr.js');
+  // Captura real (14/10): Facturas filtrada por Cliente "Ruiz" y Estado "Pagada". Lista Estado: x 372-491, y 114-138.
+  const buf = fs.readFileSync('test/fixtures/gestora-facturas-pagada.png');
+  const words = await ocrScreenshot(buf);
+  const sinVision = async () => null;
+  const enCaja = (p: { x: number; y: number }, x0: number, x1: number, y0: number, y1: number) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
+
+  const pagada = findTextMatches(words, 'Pagada');
+  assert.ok(pagada.length >= 15, `"Pagada" se repite en la tabla: ${pagada.length}`);
+  const p1 = await locateField(buf, pagada, sinVision, 1280);
+  assert.ok(enCaja(p1, 372, 491, 114, 138), `por valor debe caer en la lista Estado: ${JSON.stringify(p1)}`);
+
+  // La etiqueta sigue funcionando y la cabecera de columna "Estado" no se toma por etiqueta.
+  const p2 = await locateField(buf, findTextMatches(words, 'Estado:'), sinVision, 1280);
+  assert.ok(enCaja(p2, 372, 491, 114, 138), `por etiqueta: ${JSON.stringify(p2)}`);
+  const p3 = await locateField(buf, findTextMatches(words, 'Cliente:'), sinVision, 1280);
+  assert.ok(enCaja(p3, 77, 299, 114, 138), `filtro Cliente: ${JSON.stringify(p3)}`);
+  // Texto ya escrito en el filtro ("Ruiz") también se ubica dentro de su campo, no en las filas.
+  const p4 = await locateField(buf, findTextMatches(words, 'Ruiz'), sinVision, 1280);
+  assert.ok(enCaja(p4, 77, 299, 114, 138), `"Ruiz" escrito en el filtro: ${JSON.stringify(p4)}`);
+
+  // Celdas de una fila de tabla (sin bordes) no son cajas; las cabeceras sí.
+  const celda = findTextMatches(words, 'FV-10007')[0];
+  assert.equal(fieldContaining(buf, celda.box), null);
+  const cabecera = findTextMatches(words, 'Número')[0];
+  assert.ok(fieldContaining(buf, cabecera.box), 'la cabecera "Número" está dentro de una caja cerrada');
+});
+
+test('OCR - submenú: pasar el ratón por "Maestros" en Tk no lo abre; la tecla Derecha sí (capturas reales, 14/10)', { timeout: 90000 }, async (t) => {
+  if (!(await ocrAvailable())) { t.skip('Tesseract no está instalado'); return; }
+  const { submenuOpened } = await import('../src/agent/ocr.js');
+  const abierto = fs.readFileSync('test/fixtures/gestora-menu-abierto.png');
+  const hover = fs.readFileSync('test/fixtures/gestora-menu-hover.png');
+  const submenu = fs.readFileSync('test/fixtures/gestora-menu-submenu.png');
+  // El puntero quedó en (115,75), sobre "Maestros".
+  assert.equal(submenuOpened(abierto, hover, await ocrScreenshot(hover), 115, 75), false, 'el resaltado de la opción no es un submenú');
+  assert.equal(submenuOpened(hover, submenu, await ocrScreenshot(submenu), 115, 75), true, '"Clientes" apareció a la derecha');
+});
+
+test('OCR - texto para el planificador: la "o" de "Buscar (nombre o documento):" queda en su fila', { timeout: 60000 }, async (t) => {
+  if (!(await ocrAvailable())) { t.skip('Tesseract no está instalado'); return; }
+  // Antes llegaba como "Buscar (nombre | documento):": el planificador copiaba esa etiqueta y el OCR no la encontraba
+  // (17 consultas de visión pagadas en la corrida del 13/10).
+  const { screenTextForPrompt } = await import('../src/agent/ocr.js');
+  const texto = screenTextForPrompt(await ocrScreenshot(fs.readFileSync('test/fixtures/gestora-clientes.png')));
+  assert.match(texto, /Buscar \(nombre o documento\):/);
+  assert.doesNotMatch(texto, /nombre \| documento/);
+});
+
+test('OCR - un " | " copiado del texto del planificador vale por una palabra o por ninguna', () => {
+  const words = [
+    w('Buscar', 19, 121, 'A:1-1-1'),
+    w('(nombre', 68, 120, 'A:1-1-1'),
+    w('o', 127, 123, 'A:1-1-1'),
+    w('documento):', 139, 120, 'A:1-1-1'),
+    w('Total', 19, 684, 'A:1-2-1'),
+    w('filtrado:', 60, 684, 'A:1-2-1'),
+    w('$', 130, 684, 'A:1-2-1'),
+    w('70.670.000', 140, 684, 'A:1-2-1'),
+  ];
+  assert.equal(findTextMatches(words, 'Buscar (nombre | documento):').length, 1, 'el | ocupa el lugar de la "o"');
+  assert.equal(findTextMatches(words, 'filtrado: | $ 70.670.000').length, 1, 'el | no ocupa ninguna palabra');
+  assert.equal(findTextMatches(words, 'Buscar (nombre | teléfono):').length, 0, 'el resto debe coincidir');
+});

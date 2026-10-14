@@ -329,10 +329,23 @@ function union(boxes: Rect[]): Rect {
   return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }
 
-/** Busca el texto objetivo en las palabras OCR. Devuelve candidatos ordenados (mejor primero, sin duplicados). */
+/**
+ * Busca el texto objetivo en las palabras OCR. Devuelve candidatos ordenados (mejor primero, sin duplicados).
+ * Un " | " en el objetivo es el separador de columnas del texto que recibe el planificador: si lo copia, vale
+ * por una palabra cualquiera o por ninguna ("Buscar (nombre | documento):" encuentra "Buscar (nombre o documento):").
+ */
 export function findTextMatches(words: OcrWord[], target: string): TextMatch[] {
-  const want = tokens(target);
-  if (want.length === 0) return [];
+  if (target.includes('|')) {
+    const parts = target.split('|').map((p) => p.trim()).filter(Boolean);
+    const conComodin = matchTokens(words, target, parts.flatMap((p, i) => (i > 0 ? [null, ...tokens(p)] : tokens(p))));
+    return conComodin.length > 0 ? conComodin : matchTokens(words, target, tokens(parts.join(' ')));
+  }
+  return matchTokens(words, target, tokens(target));
+}
+
+/** want: tokens del objetivo; null = comodín que acepta cualquier palabra de la línea. */
+function matchTokens(words: OcrWord[], target: string, want: Array<string | null>): TextMatch[] {
+  if (want.filter((t) => t !== null).length === 0) return [];
   const byLine = new Map<string, OcrWord[]>();
   for (const w of words) {
     const arr = byLine.get(w.lineKey) ?? [];
@@ -348,7 +361,8 @@ export function findTextMatches(words: OcrWord[], target: string): TextMatch[] {
       let q = 0;
       let ok = true;
       for (let k = 0; k < want.length; k++) {
-        const s = tokenMatch(want[k], lt[i + k]);
+        const wk = want[k];
+        const s = wk === null ? 1 : tokenMatch(wk, lt[i + k]);
         if (s === 0) {
           ok = false;
           break;
@@ -389,13 +403,19 @@ export function extractTargetText(objetivo?: string, texto?: string): string | n
   return m ? m[1].trim() : null;
 }
 
-/**
- * Busca la caja de entrada asociada a una etiqueta, a la derecha (misma fila) y debajo, y devuelve la más cercana.
- * Una caja se confirma por un borde superior e inferior RECTOS y continuos de al menos 50 px (las letras de un
- * texto vecino no forman líneas así) y una altura de 14 a 48 px. Funciona aunque el campo ya tenga texto.
- */
-export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y: number } | null {
-  const png = PNG.sync.read(pngBuf);
+/** PNG decodificado por buffer: el localizador revisa varias coincidencias sobre la misma captura. */
+const decoded = new WeakMap<Buffer, PNG>();
+function decode(pngBuf: Buffer): PNG {
+  let png = decoded.get(pngBuf);
+  if (!png) {
+    png = PNG.sync.read(pngBuf);
+    decoded.set(pngBuf, png);
+  }
+  return png;
+}
+
+/** Detectores de bordes rectos sobre una captura (compartidos por los buscadores de campos). */
+function edgeKit(png: PNG) {
   const W = png.width;
   const H = png.height;
   const L = (x: number, y: number) => {
@@ -404,15 +424,20 @@ export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y:
   };
   const edgeH = (x: number, y: number) => Math.abs(L(x, y) - L(x, y - 1)) >= 18 || Math.abs(L(x, y + 1) - L(x, y)) >= 18;
   const edgeV = (x: number, y: number) => Math.abs(L(x, y) - L(x - 1, y)) >= 18 || Math.abs(L(x + 1, y) - L(x, y)) >= 18;
-  /** ¿Hay una línea horizontal continua en y (±1) desde x0 a lo largo de len px? */
+  /**
+   * ¿Hay una línea horizontal continua en y (±1) desde x0 a lo largo de len px?
+   * Se revisa cada píxel y se exige el 95 %: un borde es continuo; la parte de arriba de las minúsculas de una
+   * fila de texto ("ermanos") deja huecos entre letras. Con muestras cada 3 px y el 85 %, dos filas de una tabla
+   * parecían el borde superior e inferior de un campo (medido en GESTORA, Facturas, 14/10).
+   */
   const hLine = (x0: number, y: number, len: number) => {
     let hits = 0;
     let total = 0;
-    for (let k = 0; k <= len; k += 3) {
+    for (let k = 0; k <= len; k++) {
       total++;
       if (edgeH(x0 + k, y) || edgeH(x0 + k, y - 1) || edgeH(x0 + k, y + 1)) hits++;
     }
-    return hits / total >= 0.85;
+    return hits / total >= 0.95;
   };
   /** ¿Hay una línea vertical continua en x (±1) entre y0 e y1? (borde izquierdo de una caja alta) */
   const vLine = (x: number, y0: number, y1: number) => {
@@ -444,6 +469,53 @@ export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y:
     if (leftX !== undefined && h > 48 && h <= 220 && vLine(leftX, top, bottom)) return { top, bottom };
     return null;
   };
+  return { W, H, edgeH, edgeV, hLine, vLine, boxAround };
+}
+
+/**
+ * ¿El texto está DENTRO de una caja (campo, lista desplegable, celda con bordes)? Devuelve el centro de la caja.
+ * Sirve para dos cosas:
+ *  - Una lista desplegable nombrada por su valor actual ("Pagada"): el clic va sobre ese valor, no a su lado.
+ *    En la corrida del 13/10 (G15), el agente hacía clic en la tabla porque "Pagada" se repetía en 15 filas.
+ *  - Un texto dentro de una caja no es una etiqueta: no se busca "su campo" al lado (devolvía la cabecera de la tabla).
+ * Caja CERRADA: bordes superior e inferior rectos (14–48 px de alto) y bordes izquierdo y derecho verticales,
+ * el izquierdo a menos de 40 px del texto y el derecho a menos de 600 px. Una fila de tabla sin líneas, una
+ * etiqueta sobre el fondo de la ventana o un panel alto no son cajas cerradas.
+ */
+export function fieldContaining(pngBuf: Buffer, r: Rect): { x: number; y: number } | null {
+  const k = edgeKit(decode(pngBuf));
+  const cx = Math.round(r.x + r.w / 2);
+  const cy = Math.round(r.y + r.h / 2);
+  const box = k.boxAround(cx, cy);
+  if (!box) return null;
+  if (r.y < box.top - 3 || r.y + r.h > box.bottom + 3) return null;
+  let left = -1;
+  for (let x = Math.round(r.x) + 3; x >= Math.max(1, Math.round(r.x) - 40); x--) {
+    if (k.vLine(x, box.top, box.bottom)) {
+      left = x;
+      break;
+    }
+  }
+  if (left < 0) return null;
+  // Las letras no forman una línea vertical continua de arriba abajo de la caja; el borde derecho, sí.
+  let right = -1;
+  for (let x = Math.round(r.x + r.w) + 1; x < Math.min(k.W - 1, left + 600); x++) {
+    if (k.vLine(x, box.top, box.bottom)) {
+      right = x;
+      break;
+    }
+  }
+  if (right < 0) return null;
+  return { x: cx, y: Math.round((box.top + box.bottom) / 2) };
+}
+
+/**
+ * Busca la caja de entrada asociada a una etiqueta, a la derecha (misma fila) y debajo, y devuelve la más cercana.
+ * Una caja se confirma por un borde superior e inferior RECTOS y continuos de al menos 50 px (las letras de un
+ * texto vecino no forman líneas así) y una altura de 14 a 48 px. Funciona aunque el campo ya tenga texto.
+ */
+export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y: number } | null {
+  const { W, H, edgeV, edgeH, hLine, boxAround } = edgeKit(decode(pngBuf));
 
   const lcy = label.y + label.h / 2;
   // gap = espacio en píxeles entre el borde de la etiqueta y el borde del campo. Se compara el hueco y no la
@@ -484,6 +556,90 @@ export function findFieldNearLabel(pngBuf: Buffer, label: Rect): { x: number; y:
 }
 
 /**
+ * Punto donde escribir o hacer clic cuando el objetivo es un CAMPO nombrado por un texto visible.
+ * Es el camino que usa el agente (loop.ts) y el que mide scripts/medir-localizador.ts, sin copias.
+ *  1) Etiqueta con su campo al lado. Un texto DENTRO de una caja cerrada (cabecera de tabla, valor de una lista,
+ *     texto ya escrito) no es una etiqueta: su "campo al lado" era la cabecera o la tabla.
+ *  2) Valor dentro de un campo: lista desplegable nombrada por su valor actual ("Pagada", "Todos"), texto ya
+ *     escrito o marcador. En G15 (13/10) "Pagada" estaba en la lista y en 15 filas de la tabla.
+ *  3) Sin caja detectada: etiqueta a la izquierda y campo a la derecha (+45 px), lo más común.
+ * La visión solo se consulta si quedan varios candidatos igual de buenos.
+ */
+export async function locateField(
+  pngBuf: Buffer,
+  matches: TextMatch[],
+  vision: () => Promise<{ x: number; y: number } | null>,
+  screenWidth: number
+): Promise<{ x: number; y: number; via: string }> {
+  type Cand = { m: TextMatch; f: { x: number; y: number } };
+  const nearest = (list: Cand[], vp: { x: number; y: number }) =>
+    list.reduce((a, b) => (Math.hypot(b.f.x - vp.x, b.f.y - vp.y) < Math.hypot(a.f.x - vp.x, a.f.y - vp.y) ? b : a));
+
+  const inside = new Map<TextMatch, { x: number; y: number } | null>();
+  const insideOf = (m: TextMatch) => {
+    if (!inside.has(m)) inside.set(m, fieldContaining(pngBuf, m.box));
+    return inside.get(m)!;
+  };
+
+  const labels = matches.filter((m) => !insideOf(m)).slice(0, 6);
+  const withField = labels
+    .map((m) => ({ m, f: findFieldNearLabel(pngBuf, m.box) }))
+    .filter((c): c is Cand => c.f !== null);
+  if (withField.length > 0) {
+    let pick = withField[0];
+    const top = withField.filter((c) => c.m.score >= withField[0].m.score - 0.1);
+    if (top.length > 1) {
+      const vp = await vision();
+      if (vp) pick = nearest(top, vp);
+    }
+    return { x: pick.f.x, y: pick.f.y, via: `ocr("${pick.m.text}")+campo` };
+  }
+
+  const values = matches.map((m) => ({ m, f: insideOf(m) })).filter((c): c is Cand => c.f !== null);
+  if (values.length > 0) {
+    let pick = values[0];
+    if (values.length > 1) {
+      const vp = await vision();
+      if (vp) pick = nearest(values, vp);
+    }
+    return { x: pick.f.x, y: pick.f.y, via: `ocr("${pick.m.text}")+dentro` };
+  }
+
+  const m = matches[0];
+  return {
+    x: Math.min(screenWidth - 5, Math.round(m.box.x + m.box.w + 45)),
+    y: Math.round(m.box.y + m.box.h / 2),
+    via: `ocr("${m.text}")+derecha`,
+  };
+}
+
+/**
+ * ¿Apareció un submenú después de pasar el ratón por una opción de menú en (px,py)?
+ * Sí, si cambió un bloque de pantalla que EMPIEZA a la derecha del puntero (un panel nuevo, de 40x16 px o más)
+ * y dentro de él se lee al menos una palabra de 3+ letras. Resaltar la opción cambia un bloque que empieza a la
+ * izquierda del puntero (todo el ancho del menú), así que no cuenta. Comparar solo palabras no sirve: al releer la
+ * zona del menú, el OCR devuelve trozos del texto de fondo ("ESTORA") que parecen nuevos (simulación, 14/10).
+ */
+export function submenuOpened(beforePng: Buffer, afterPng: Buffer, afterWords: OcrWord[], px: number, py: number): boolean {
+  const zonas = changedRegions(beforePng, afterPng);
+  if (!zonas) return false;
+  return zonas.some(
+    (r) =>
+      r.x >= px + 15 &&
+      r.w >= 40 &&
+      r.h >= 16 &&
+      Math.abs(r.y + r.h / 2 - py) < 320 &&
+      afterWords.some((w) => {
+        const cx = w.box.x + w.box.w / 2;
+        const cy = w.box.y + w.box.h / 2;
+        return (
+          normalizeText(w.text).replace(/[^\p{L}]/gu, '').length >= 3 && cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h
+        );
+      })
+  );
+}
+
+/**
  * Texto de la pantalla en filas (de arriba abajo), para que el planificador lea tablas y copie textos exactos.
  * Une las variantes del OCR quitando duplicados; separa columnas lejanas con " | ".
  */
@@ -503,15 +659,26 @@ export function screenTextForPrompt(words: OcrWord[], maxChars = 6000): string {
     if (!dup) uniq.push(w);
   }
   uniq.sort((a, b) => a.box.y + a.box.h / 2 - (b.box.y + b.box.h / 2));
-  const rows: OcrWord[][] = [];
+  // Fila = palabras que se solapan en vertical. Antes se comparaba con el centro de la primera palabra (±6 px) y
+  // las letras bajas ("o", "a") caían en otra fila: la etiqueta "Buscar (nombre o documento):" llegaba al
+  // planificador como "Buscar (nombre | documento):", el planificador la copiaba y el OCR ya no la encontraba
+  // (en la corrida del 13/10 con Sonnet, 17 de las 70 consultas de visión pagadas fueron por esto).
+  const rows: Array<{ words: OcrWord[]; top: number; bottom: number }> = [];
   for (const w of uniq) {
-    const cy = w.box.y + w.box.h / 2;
-    const row = rows.find((r) => Math.abs(r[0].box.y + r[0].box.h / 2 - cy) < 6);
-    if (row) row.push(w);
-    else rows.push([w]);
+    const top = w.box.y;
+    const bottom = w.box.y + w.box.h;
+    const row = rows.find((r) => {
+      const overlap = Math.min(bottom, r.bottom) - Math.max(top, r.top);
+      return overlap >= 0.5 * Math.min(w.box.h, r.bottom - r.top);
+    });
+    if (row) {
+      row.words.push(w);
+      row.top = Math.min(row.top, top);
+      row.bottom = Math.max(row.bottom, bottom);
+    } else rows.push({ words: [w], top, bottom });
   }
   const lines: string[] = [];
-  for (const r of rows) {
+  for (const { words: r, top, bottom } of rows) {
     r.sort((a, b) => a.box.x - b.box.x);
     let line = '';
     let prevRight = -1;
@@ -520,7 +687,7 @@ export function screenTextForPrompt(words: OcrWord[], maxChars = 6000): string {
       line += w.text;
       prevRight = w.box.x + w.box.w;
     }
-    lines.push(`y=${Math.round(r[0].box.y + r[0].box.h / 2)}: ${line}`);
+    lines.push(`y=${Math.round((top + bottom) / 2)}: ${line}`);
   }
   let out = lines.join('\n');
   if (out.length > maxChars) out = out.slice(0, maxChars) + '\n(...)';

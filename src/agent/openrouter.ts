@@ -157,6 +157,17 @@ const ACTION_FORMATS = [
   'Responde ÚNICAMENTE el objeto JSON.',
 ].join('\n');
 
+/**
+ * Precio en US$ por millón de tokens (entrada, salida), solo si OpenRouter no devuelve usage.cost.
+ * Antes se usaba el de Gemini 2.5 Flash para todos: con Claude Sonnet el costo quedaba ~7 veces corto y el tope
+ * por tarea no cortaba a tiempo. Un modelo sin precio conocido se cobra caro a propósito, para que el tope sobre.
+ */
+export function fallbackPrice(model: string): [number, number] {
+  if (/gemini-2\.5-flash/i.test(model)) return [0.3, 2.5];
+  if (/claude-sonnet/i.test(model)) return [2, 10];
+  return [5, 25];
+}
+
 /** Modelos de Anthropic (Claude): entrenados para operar computadores por capturas; se les piden píxeles. */
 export function isAnthropicModel(model: string): boolean {
   return /^anthropic\/|claude/i.test(model);
@@ -211,7 +222,10 @@ export class OpenRouterClient implements VisionJsonCaller {
       if (params.abortSignal?.aborted) throw new Error('Operación abortada por señal de tarea');
       attempts++;
       try {
-        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        // OPENROUTER_BASE_URL: pasarela de la empresa compatible con OpenAI (LiteLLM, un proxy con registro) o el
+        // planificador simulado de scripts/simular-tarea.ts, que prueba el agente completo sin gastar en modelos.
+        const base = (process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, '');
+        const response = await fetch(`${base}/chat/completions`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${this.apiKey}`,
@@ -253,7 +267,8 @@ export class OpenRouterClient implements VisionJsonCaller {
         if (data.usage?.cost) {
           costUsd = Number(data.usage.cost);
         } else if (data.usage?.prompt_tokens && data.usage?.completion_tokens) {
-          costUsd = (data.usage.prompt_tokens * 0.3 + data.usage.completion_tokens * 2.5) / 1000000;
+          const [pin, pout] = fallbackPrice(params.model);
+          costUsd = (data.usage.prompt_tokens * pin + data.usage.completion_tokens * pout) / 1000000;
         }
         return { content, costUsd };
       } catch (err: unknown) {

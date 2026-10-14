@@ -4,12 +4,14 @@ import http from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { RfbClient } from '../src/rfb/client.js';
 import { encryptVncChallenge } from '../src/rfb/des.js';
+import { PNG } from 'pngjs';
 
-function startMockRfbServer(expectedPassword = 'vncpass1'): Promise<{
+function startMockRfbServer(expectedPassword = 'vncpass1', opts: { cursor?: boolean } = {}): Promise<{
   server: http.Server;
   wsUrl: string;
   receivedPointerEvents: Array<{ mask: number; x: number; y: number }>;
   receivedKeyEvents: Array<{ down: boolean; keysym: number }>;
+  receivedEncodings: number[];
   close: () => Promise<void>;
 }> {
   return new Promise((resolve) => {
@@ -17,6 +19,7 @@ function startMockRfbServer(expectedPassword = 'vncpass1'): Promise<{
     const wss = new WebSocketServer({ server });
     const receivedPointerEvents: Array<{ mask: number; x: number; y: number }> = [];
     const receivedKeyEvents: Array<{ down: boolean; keysym: number }> = [];
+    const receivedEncodings: number[] = [];
 
     wss.on('connection', (ws: WebSocket) => {
       // 1. Send Version
@@ -94,6 +97,8 @@ function startMockRfbServer(expectedPassword = 'vncpass1'): Promise<{
 
           if (msgType === 2) {
             // SetEncodings
+            const n = msg.readUInt16BE(2);
+            for (let i = 0; i < n; i++) receivedEncodings.push(msg.readInt32BE(4 + i * 4));
           } else if (msgType === 3) {
             // FramebufferUpdateRequest
             const incremental = msg.readUInt8(1);
@@ -109,18 +114,33 @@ function startMockRfbServer(expectedPassword = 'vncpass1'): Promise<{
                 rectPixels[i + 3] = 255;
               }
 
-              const header = Buffer.alloc(4 + 12);
+              // Con opts.cursor y si el cliente lo pidió: primero la forma del puntero (Cursor, -239), como x11vnc.
+              const cursor = opts.cursor && receivedEncodings.includes(-239);
+              const header = Buffer.alloc(4);
               header.writeUInt8(0, 0); // FramebufferUpdate
               header.writeUInt8(0, 1);
-              header.writeUInt16BE(1, 2); // 1 rectangle
+              header.writeUInt16BE(cursor ? 2 : 1, 2); // rectangles
 
-              header.writeUInt16BE(0, 4);  // x
-              header.writeUInt16BE(0, 6);  // y
-              header.writeUInt16BE(rw, 8); // width
-              header.writeUInt16BE(rh, 10); // height
-              header.writeInt32BE(0, 12);  // Raw encoding
-
-              ws.send(Buffer.concat([header, rectPixels]));
+              const parts: Buffer[] = [header];
+              if (cursor) {
+                const cw = 12;
+                const ch = 19;
+                const cur = Buffer.alloc(12);
+                cur.writeUInt16BE(1, 0); // hotspot x
+                cur.writeUInt16BE(1, 2); // hotspot y
+                cur.writeUInt16BE(cw, 4);
+                cur.writeUInt16BE(ch, 6);
+                cur.writeInt32BE(-239, 8);
+                parts.push(cur, Buffer.alloc(cw * ch * 4, 0xff), Buffer.alloc(Math.floor((cw + 7) / 8) * ch, 0xff));
+              }
+              const raw = Buffer.alloc(12);
+              raw.writeUInt16BE(0, 0);  // x
+              raw.writeUInt16BE(0, 2);  // y
+              raw.writeUInt16BE(rw, 4); // width
+              raw.writeUInt16BE(rh, 6); // height
+              raw.writeInt32BE(0, 8);   // Raw encoding
+              parts.push(raw, rectPixels);
+              ws.send(Buffer.concat(parts));
             }
           } else if (msgType === 5) {
             // PointerEvent
@@ -145,6 +165,7 @@ function startMockRfbServer(expectedPassword = 'vncpass1'): Promise<{
         wsUrl: `ws://127.0.0.1:${addr.port}`,
         receivedPointerEvents,
         receivedKeyEvents,
+        receivedEncodings,
         close: () =>
           new Promise((res) => {
             for (const c of wss.clients) {
@@ -224,6 +245,25 @@ test('RfbClient - Rejects with Authentication Failure on incorrect password', as
       },
       /Autenticación VNC fallida/
     );
+  } finally {
+    client.close();
+    await mock.close();
+  }
+});
+
+test('RfbClient - pide la forma del puntero (Cursor -239) y la descarta: la captura queda sin puntero e intacta', async () => {
+  const mock = await startMockRfbServer('vncpass1', { cursor: true });
+  const client = new RfbClient({ url: mock.wsUrl, password: 'vncpass1' });
+  try {
+    await client.connect();
+    await client.waitForFirstFrame(3000);
+    assert.ok(mock.receivedEncodings.includes(-239), 'El cliente debe anunciar la pseudo-codificación Cursor');
+    const png = PNG.sync.read(await client.captureScreenshotPng());
+    assert.equal(png.width, 640);
+    // Los primeros 100 píxeles del rectángulo Raw son azules: si el rectángulo del puntero se leyera mal,
+    // el Raw quedaría corrido o la conexión se cerraría por "codificación no soportada".
+    assert.deepEqual([...png.data.subarray(0, 3)], [0, 0, 255]);
+    assert.deepEqual([...png.data.subarray(100 * 4, 100 * 4 + 3)], [128, 128, 128]);
   } finally {
     client.close();
     await mock.close();

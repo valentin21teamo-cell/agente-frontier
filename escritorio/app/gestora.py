@@ -116,6 +116,8 @@ class Gestora:
         self.root.update_idletasks()
         caja = lambda w: {"x": w.winfo_rootx(), "y": w.winfo_rooty(), "w": w.winfo_width(), "h": w.winfo_height()}
         pares = []
+        # Valor visible del campo: permite medir el caso "lista desplegable nombrada por su valor actual".
+        valor = lambda w: w.get("1.0", "end-1c") if w.winfo_class() == "Text" else (w.get() if hasattr(w, "get") else "")
 
         def visitar(padre):
             hijos = [h for h in padre.winfo_children() if h.winfo_ismapped()]
@@ -129,7 +131,8 @@ class Gestora:
                 elif clase == "Label":
                     anterior = h
                 elif clase in ("TEntry", "TCombobox", "Text") and anterior is not None:
-                    pares.append({"etiqueta": anterior.cget("text"), "tipo": clase, "campo": caja(h), "caja_etiqueta": caja(anterior)})
+                    pares.append({"etiqueta": anterior.cget("text"), "tipo": clase, "campo": caja(h), "caja_etiqueta": caja(anterior),
+                                  "valor": valor(h)})
                     anterior = None
                 elif clase not in ("Label",):
                     anterior = None if clase in ("TButton",) else anterior
@@ -137,7 +140,7 @@ class Gestora:
             for fila in por_fila.values():
                 if 0 in fila and 1 in fila and fila[0].winfo_class() == "Label":
                     pares.append({"etiqueta": fila[0].cget("text"), "tipo": fila[1].winfo_class(),
-                                  "campo": caja(fila[1]), "caja_etiqueta": caja(fila[0])})
+                                  "campo": caja(fila[1]), "caja_etiqueta": caja(fila[0]), "valor": valor(fila[1])})
 
         visitar(self.contenido)
         temporal = ruta + ".tmp"

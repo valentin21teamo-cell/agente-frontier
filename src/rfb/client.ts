@@ -267,14 +267,19 @@ export class RfbClient {
           blueShift: 0,
         };
 
-        // 2. SetEncodings: Raw (0), CopyRect (1), DesktopSize (-223)
-        const encMsg = Buffer.alloc(4 + 3 * 4);
+        // 2. SetEncodings: Raw (0), CopyRect (1), DesktopSize (-223), Cursor (-239).
+        // Cursor: el cliente dice que dibuja el puntero por su cuenta, así que el servidor deja de pintarlo
+        // dentro de la imagen. Sin esto, el puntero tapaba el texto donde se acababa de hacer clic y el OCR
+        // no lo leía ("Maestros", "Siguiente"); cada caso costaba una consulta de visión (medido 13/10).
+        // Un servidor que no la soporte la ignora (RFC 6143, 7.7).
+        const encMsg = Buffer.alloc(4 + 4 * 4);
         encMsg.writeUInt8(2, 0); // SetEncodings
         encMsg.writeUInt8(0, 1);
-        encMsg.writeUInt16BE(3, 2); // 3 encodings
+        encMsg.writeUInt16BE(4, 2); // 4 encodings
         encMsg.writeInt32BE(0, 4);     // Raw (0)
         encMsg.writeInt32BE(1, 8);     // CopyRect (1)
         encMsg.writeInt32BE(-223, 12); // DesktopSize (-223)
+        encMsg.writeInt32BE(-239, 16); // Cursor (-239)
         this.send(encMsg);
 
         // 3. Request initial full frame
@@ -354,10 +359,16 @@ export class RfbClient {
           this.height = rh;
           this.framebuffer = Buffer.alloc(this.width * this.height * 4, 0xff);
           safeLogger.info(`[RFB] Resolución de pantalla redimensionada (DesktopSize): ${this.width}x${this.height}`);
+        } else if (encoding === -239) {
+          // Cursor Pseudo-encoding (RFC 6143, 7.8.1): forma del puntero. No se dibuja: las capturas van sin él.
+          const bytesPerPixel = (this.pixelFormat?.bpp || 32) / 8;
+          const dataLen = rw * rh * bytesPerPixel + Math.floor((rw + 7) / 8) * rh;
+          if (this.rxBuffer.length < offset + dataLen) return false;
+          offset += dataLen;
         } else {
           // Unsupported encoding - fail with clear error per requirement
           const err = new Error(
-            `Codificación RFB no soportada: ${encoding}. Solo se admiten Raw (0), CopyRect (1) y DesktopSize (-223).`
+            `Codificación RFB no soportada: ${encoding}. Solo se admiten Raw (0), CopyRect (1), DesktopSize (-223) y Cursor (-239).`
           );
           this.close(err.message);
           throw err;

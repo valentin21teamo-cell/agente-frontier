@@ -1,0 +1,31 @@
+Equipo: 2 CPU, Intel(R) Xeon(R) Processor @ 2.10GHz | 2026-10-14T12:34:58.762Z
+
+== mover el puntero sobre la lista (i1-lista -> i2-lista-cursor)
+   zonas cambiadas: [{"x":192,"y":64,"w":32,"h":32},{"x":288,"y":384,"w":32,"h":32}] | modo: zonas
+   OCR completo 4884 ms | incremental 1156 ms
+   palabras distintas: completo 141, incremental 144
+   faltan en incremental: cune cumkke | sobran: 336615816 339158972 cure curt sre
+   "Clientes": completo (62,91) | incremental (63,91)
+   "Nuevo cliente": completo (1168,158) | incremental (1168,158)
+   "CL-0010": completo (51,406) | incremental (51,406)
+   "Ciudad:": completo (529,126) | incremental (529,126)
+
+== escribir un nombre en el formulario (i3-form -> i4-form-nombre)
+   zonas cambiadas: [{"x":240,"y":128,"w":448,"h":32},{"x":1072,"y":128,"w":192,"h":48}] | modo: zonas
+   OCR completo 2299 ms | incremental 1403 ms
+   palabras distintas: completo 37, incremental 38
+   faltan en incremental: - | sobran: acclones
+   "Nombre o razón social": completo (109,143) | incremental (109,143)
+   "Número de documento": completo (111,211) | incremental (111,211)
+   "Guardar": completo (1168,158) | incremental (1168,158)
+   "Papelería Los Andes": completo (325,144) | incremental (325,144)
+
+== abrir la lista de ciudades (i4-form-nombre -> i5-form-combo)
+   zonas cambiadas: [{"x":240,"y":128,"w":448,"h":32},{"x":240,"y":256,"w":16,"h":16},{"x":240,"y":256,"w":208,"h":224}] | modo: zonas
+   OCR completo 2785 ms | incremental 2117 ms
+   palabras distintas: completo 47, incremental 47
+   faltan en incremental: nit | sobran: init
+   "Pereira": completo (280,463) | incremental (280,463)
+   "Armenia": completo (285,301) | incremental (285,301)
+   "Teléfono": completo (64,245) | incremental (64,245)
+   "Guardar": completo (1168,158) | incremental (1168,158)
