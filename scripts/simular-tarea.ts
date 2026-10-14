@@ -149,7 +149,12 @@ globalTaskStore.setWorkerRunner(runAgentTask);
 const nombres = process.argv.slice(2).length > 0 ? process.argv.slice(2) : Object.keys(GUIONES);
 let commit = 'desconocido';
 try {
-  commit = execFileSync('git', ['-C', AGENTE_DIR, 'describe', '--always', '--dirty=+cambios-sin-commit'], { encoding: 'utf-8' }).trim();
+  commit = execFileSync('git', ['-C', AGENTE_DIR, 'describe', '--always'], { encoding: 'utf-8' }).trim();
+  // Solo cuenta el código: los archivos de evidencia se reescriben durante la propia corrida.
+  const cambios = execFileSync('git', ['-C', AGENTE_DIR, 'status', '--porcelain', '--', 'src', 'scripts', 'escritorio', 'package.json'], {
+    encoding: 'utf-8',
+  }).trim();
+  if (cambios) commit += '+cambios-sin-commit';
 } catch {
   /* sin git */
 }
