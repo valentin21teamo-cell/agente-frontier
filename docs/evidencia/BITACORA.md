@@ -29,6 +29,7 @@ Regla: lo que no tiene fuente adjunta se marca como **sin archivar** o **por con
 | 14/10 06:58 | c4eefe6 | Localizador de campos: 11/24 → 23/24, medido sin gastar en modelos (`mediciones/localizador-campos-2026-10-14.md`) |
 | 14/10 07:05 | e124147 | OCR incremental (4,9 → 1,2 s al mover el puntero, medición archivada) y prompt más barato (caché de Anthropic, historial más corto). Subido con c4eefe6 a las 07:06; desplegado como revisión 00032 |
 | 14/10 07:3x | — (configuración, aprobada por Andrés) | Revisión `agente-frontier-00033-6bf`: `MODEL_ID` y `GROUNDING_MODEL_ID` = `anthropic/claude-sonnet-5.5`; `MAX_COST_USD_PER_TASK` 0,25 → 0,40. Aplicado en la consola de Cloud Run; `/health` confirmó la revisión. Las claves secretas no se tocaron |
+| 14/10 13:2x | b08421a, ed4ea39 | Ejecutor: lista desplegable por su valor, submenú con la tecla Derecha, capturas sin puntero, filas de la tabla que ya no pasan por campos, "\|" en las etiquetas, precio de respaldo por modelo. Simulador sin modelos. Pruebas 74/74 (`pruebas/npm-test-b08421a.txt`) |
 
 ## Incidentes
 

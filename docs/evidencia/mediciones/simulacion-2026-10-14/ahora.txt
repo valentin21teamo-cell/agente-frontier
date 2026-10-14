@@ -1,127 +1,127 @@
-Agente: /home/claude/agente-frontier (commit e124147+cambios-sin-commit) | escritorio: http://localhost:8099 | 2026-10-14T13:22:52.091Z
+Agente: /home/claude/agente-frontier (commit ed4ea39) | escritorio: http://localhost:8099 | 2026-10-14T13:34:43.390Z
 
 == submenu: PASA | estado terminada | 26 s | pasos 4 | planificador 4 | consultas de visión 0
    [0.0s] Modelos: planificador anthropic/claude-sonnet-5.5 | localizador anthropic/claude-sonnet-5.5
-   [5.0s] Paso 1 OCR para planificador 3.3s [completo] (340 palabras)
-   [5.0s] Paso 1 planificador 0.0s: click[Entendido], click[Comercial] | Cierro el aviso y abro Comercial.
+   [4.9s] Paso 1 OCR para planificador 3.3s [completo] (340 palabras)
+   [4.9s] Paso 1 planificador 0.0s: click[Entendido], click[Comercial] | Cierro el aviso y abro Comercial.
    [5.1s]     OCR 0.0s [igual], 340 palabras; "Entendido" -> 1 coincidencia(s)
-   [6.8s]   Clic en "botón del diálogo de novedades [Entendido]" → (819,435) vía ocr("Entendido") [la pantalla cambió] (1.6s)
-   [9.3s]     OCR 2.4s [completo], 164 palabras; "Comercial" -> 3 coincidencia(s)
-   [11.0s]   Clic en "menú superior Comercial [Comercial]" → (124,50) vía ocr("Comercial") [la pantalla cambió] (4.1s)
-   [12.8s] Paso 2 OCR para planificador 1.3s [zonas(1)] (170 palabras)
-   [12.8s] Paso 2 planificador 0.0s: move[Maestros] | Paso el ratón por Maestros.
-   [12.9s]     OCR 0.0s [igual], 170 palabras; "Maestros" -> 1 coincidencia(s)
-   [16.8s]   Pasó el ratón por "opción del menú Comercial [Maestros]" → (114,75) vía ocr("Maestros"); el submenú no abrió con el ratón: se pulsó la tecla Derecha [la pantalla cambió] (3.9s)
-   [18.8s] Paso 3 OCR para planificador 1.6s [zonas(1)] (152 palabras)
-   [18.8s] Paso 3 planificador 0.0s: click[Clientes] | Abro Clientes.
-   [18.9s]     OCR 0.0s [igual], 152 palabras; "Clientes" -> 1 coincidencia(s)
-   [20.5s]   Clic en "opción del submenú Maestros [Clientes]" → (210,75) vía ocr("Clientes") [la pantalla cambió] (1.6s)
-   [25.8s] Paso 4 OCR para planificador 4.9s [completo] (874 palabras)
-   [25.8s] Paso 4 planificador 0.0s: finish | Listo.
-   [25.8s] FIN terminada:  Lista de clientes abierta.
+   [6.7s]   Clic en "botón del diálogo de novedades [Entendido]" → (819,435) vía ocr("Entendido") [la pantalla cambió] (1.6s)
+   [9.2s]     OCR 2.4s [completo], 164 palabras; "Comercial" -> 3 coincidencia(s)
+   [10.8s]   Clic en "menú superior Comercial [Comercial]" → (124,50) vía ocr("Comercial") [la pantalla cambió] (4.0s)
+   [12.5s] Paso 2 OCR para planificador 1.3s [zonas(1)] (170 palabras)
+   [12.5s] Paso 2 planificador 0.0s: move[Maestros] | Paso el ratón por Maestros.
+   [12.6s]     OCR 0.0s [igual], 170 palabras; "Maestros" -> 1 coincidencia(s)
+   [16.4s]   Pasó el ratón por "opción del menú Comercial [Maestros]" → (114,75) vía ocr("Maestros"); el submenú no abrió con el ratón: se pulsó la tecla Derecha [la pantalla cambió] (3.8s)
+   [18.1s] Paso 3 OCR para planificador 1.3s [zonas(1)] (152 palabras)
+   [18.1s] Paso 3 planificador 0.0s: click[Clientes] | Abro Clientes.
+   [18.2s]     OCR 0.0s [igual], 152 palabras; "Clientes" -> 1 coincidencia(s)
+   [19.9s]   Clic en "opción del submenú Maestros [Clientes]" → (210,75) vía ocr("Clientes") [la pantalla cambió] (1.6s)
+   [25.4s] Paso 4 OCR para planificador 5.1s [completo] (874 palabras)
+   [25.4s] Paso 4 planificador 0.0s: finish | Listo.
+   [25.4s] FIN terminada:  Lista de clientes abierta.
 
 == g15: PASA | estado terminada | 45 s | pasos 7 | planificador 7 | consultas de visión 0
    [0.0s] Modelos: planificador anthropic/claude-sonnet-5.5 | localizador anthropic/claude-sonnet-5.5
-   [1.5s] Paso 1 OCR para planificador 0.0s [completo] (340 palabras)
-   [1.5s] Paso 1 planificador 0.0s: click[Entendido], click[Cartera] | Cierro el aviso y abro Cartera.
-   [1.6s]     OCR 0.0s [igual], 340 palabras; "Entendido" -> 1 coincidencia(s)
-   [3.3s]   Clic en "botón del diálogo de novedades [Entendido]" → (819,435) vía ocr("Entendido") [la pantalla cambió] (1.6s)
-   [3.5s]     OCR 0.1s [completo], 164 palabras; "Cartera" -> 1 coincidencia(s)
-   [5.1s]   Clic en "menú superior Cartera [Cartera]" → (210,50) vía ocr("Cartera") [la pantalla cambió] (1.8s)
-   [6.6s] Paso 2 OCR para planificador 1.0s [zonas(1)] (172 palabras)
-   [6.6s] Paso 2 planificador 0.0s: click[Facturas] | Abro Facturas.
-   [6.7s]     OCR 0.0s [igual], 172 palabras; "Facturas" -> 1 coincidencia(s)
-   [8.4s]   Clic en "opción del menú Cartera [Facturas]" → (208,75) vía ocr("Facturas") [la pantalla cambió] (1.6s)
-   [13.6s] Paso 3 OCR para planificador 4.9s [completo] (944 palabras)
-   [13.6s] Paso 3 planificador 0.0s: type_text[Cliente:], click[Todos] | Filtro por cliente y abro la lista Estado.
-   [13.8s]     OCR 0.0s [igual], 944 palabras; "Cliente:" -> 2 coincidencia(s)
-   [17.4s]   Escribió "Ruiz" en "campo Cliente del filtro [Cliente:]" → campo en (101,126) vía ocr("Cliente:")+campo [la pantalla cambió] (3.7s)
-   [18.4s]     OCR 0.9s [zonas(1)], 938 palabras; "Todos" -> 1 coincidencia(s)
-   [20.1s]   Clic en "lista desplegable Estado en la barra de filtros [Todos]" → (396,126) vía ocr("Todos")+dentro [la pantalla cambió] (2.6s)
-   [22.4s] Paso 4 OCR para planificador 1.9s [zonas(2)] (965 palabras)
-   [22.4s] Paso 4 planificador 0.0s: click[Pagada], click[Filtrar] | Elijo Pagada y filtro.
-   [22.6s]     OCR 0.0s [igual], 965 palabras; "Pagada" -> 15 coincidencia(s)
-   [24.2s]   Clic en "opción de la lista desplegable Estado [Pagada]" → (400,185) vía ocr("Pagada") [la pantalla cambió] (1.7s)
-   [25.4s]     OCR 1.1s [zonas(1)], 947 palabras; "Filtrar" -> 4 coincidencia(s)
-   [27.1s]   Clic en "botón Filtrar [Filtrar]" → (902,126) vía ocr("Filtrar") [la pantalla cambió] (2.8s)
-   [32.4s] Paso 5 OCR para planificador 4.8s [completo] (812 palabras)
+   [1.7s] Paso 1 OCR para planificador 0.0s [completo] (340 palabras)
+   [1.7s] Paso 1 planificador 0.0s: click[Entendido], click[Cartera] | Cierro el aviso y abro Cartera.
+   [1.8s]     OCR 0.0s [igual], 340 palabras; "Entendido" -> 1 coincidencia(s)
+   [3.5s]   Clic en "botón del diálogo de novedades [Entendido]" → (819,435) vía ocr("Entendido") [la pantalla cambió] (1.7s)
+   [3.7s]     OCR 0.1s [completo], 164 palabras; "Cartera" -> 1 coincidencia(s)
+   [5.3s]   Clic en "menú superior Cartera [Cartera]" → (210,50) vía ocr("Cartera") [la pantalla cambió] (1.8s)
+   [7.1s] Paso 2 OCR para planificador 1.3s [zonas(1)] (172 palabras)
+   [7.1s] Paso 2 planificador 0.0s: click[Facturas] | Abro Facturas.
+   [7.2s]     OCR 0.0s [igual], 172 palabras; "Facturas" -> 1 coincidencia(s)
+   [8.9s]   Clic en "opción del menú Cartera [Facturas]" → (208,75) vía ocr("Facturas") [la pantalla cambió] (1.7s)
+   [14.4s] Paso 3 OCR para planificador 5.1s [completo] (944 palabras)
+   [14.4s] Paso 3 planificador 0.0s: type_text[Cliente:], click[Todos] | Filtro por cliente y abro la lista Estado.
+   [14.6s]     OCR 0.0s [igual], 944 palabras; "Cliente:" -> 2 coincidencia(s)
+   [18.3s]   Escribió "Ruiz" en "campo Cliente del filtro [Cliente:]" → campo en (101,126) vía ocr("Cliente:")+campo [la pantalla cambió] (3.7s)
+   [19.3s]     OCR 0.9s [zonas(1)], 938 palabras; "Todos" -> 1 coincidencia(s)
+   [21.0s]   Clic en "lista desplegable Estado en la barra de filtros [Todos]" → (396,126) vía ocr("Todos")+dentro [la pantalla cambió] (2.6s)
+   [22.8s] Paso 4 OCR para planificador 1.4s [zonas(2)] (965 palabras)
+   [22.8s] Paso 4 planificador 0.0s: click[Pagada], click[Filtrar] | Elijo Pagada y filtro.
+   [22.9s]     OCR 0.0s [igual], 965 palabras; "Pagada" -> 15 coincidencia(s)
+   [24.5s]   Clic en "opción de la lista desplegable Estado [Pagada]" → (400,185) vía ocr("Pagada") [la pantalla cambió] (1.6s)
+   [25.6s]     OCR 0.9s [zonas(1)], 947 palabras; "Filtrar" -> 4 coincidencia(s)
+   [27.3s]   Clic en "botón Filtrar [Filtrar]" → (902,126) vía ocr("Filtrar") [la pantalla cambió] (2.6s)
+   [32.4s] Paso 5 OCR para planificador 4.7s [completo] (812 palabras)
    [32.4s] Paso 5 planificador 0.0s: click[Pagada] | Pagadas: 15. Abro la lista Estado para elegir Pendiente.
    [32.5s]     OCR 0.0s [igual], 812 palabras; "Pagada" -> 16 coincidencia(s)
    [34.2s]   Clic en "lista desplegable Estado en la barra de filtros [Pagada]" → (400,126) vía ocr("[Pagadal")+dentro [la pantalla cambió] (1.7s)
-   [36.4s] Paso 6 OCR para planificador 1.8s [zonas(2)] (821 palabras)
+   [36.5s] Paso 6 OCR para planificador 1.8s [zonas(2)] (821 palabras)
    [36.5s] Paso 6 planificador 0.0s: click[Pendiente], click[Filtrar] | Elijo Pendiente y filtro.
    [36.6s]     OCR 0.0s [igual], 821 palabras; "Pendiente" -> 1 coincidencia(s)
    [38.2s]   Clic en "opción de la lista desplegable Estado [Pendiente]" → (410,166) vía ocr("Pendiente") [la pantalla cambió] (1.6s)
-   [39.3s]     OCR 1.0s [zonas(1)], 816 palabras; "Filtrar" -> 4 coincidencia(s)
+   [39.4s]     OCR 1.0s [zonas(1)], 816 palabras; "Filtrar" -> 4 coincidencia(s)
    [41.0s]   Clic en "botón Filtrar [Filtrar]" → (901,126) vía ocr("Filtrar") [la pantalla cambió] (2.7s)
-   [44.8s] Paso 7 OCR para planificador 3.4s [completo] (400 palabras)
-   [44.8s] Paso 7 planificador 0.0s: finish | Leo el total.
-   [44.8s] FIN terminada: 15;4 Filtré por Ruiz y estado.
+   [44.9s] Paso 7 OCR para planificador 3.4s [completo] (400 palabras)
+   [44.9s] Paso 7 planificador 0.0s: finish | Leo el total.
+   [44.9s] FIN terminada: 15;4 Filtré por Ruiz y estado.
 
-== buscar: PASA | estado terminada | 26 s | pasos 5 | planificador 5 | consultas de visión 0
+== buscar: PASA | estado terminada | 25 s | pasos 5 | planificador 5 | consultas de visión 0
    [0.0s] Modelos: planificador anthropic/claude-sonnet-5.5 | localizador anthropic/claude-sonnet-5.5
-   [1.6s] Paso 1 OCR para planificador 0.0s [completo] (340 palabras)
-   [1.6s] Paso 1 planificador 0.0s: click[Entendido], click[Comercial] | Cierro el aviso y abro Comercial.
+   [1.5s] Paso 1 OCR para planificador 0.0s [completo] (340 palabras)
+   [1.5s] Paso 1 planificador 0.0s: click[Entendido], click[Comercial] | Cierro el aviso y abro Comercial.
    [1.7s]     OCR 0.0s [igual], 340 palabras; "Entendido" -> 1 coincidencia(s)
    [3.3s]   Clic en "botón del diálogo de novedades [Entendido]" → (819,435) vía ocr("Entendido") [la pantalla cambió] (1.6s)
    [3.6s]     OCR 0.1s [completo], 164 palabras; "Comercial" -> 3 coincidencia(s)
-   [5.2s]   Clic en "menú superior Comercial [Comercial]" → (124,50) vía ocr("Comercial") [la pantalla cambió] (1.7s)
+   [5.2s]   Clic en "menú superior Comercial [Comercial]" → (124,50) vía ocr("Comercial") [la pantalla cambió] (1.8s)
    [6.8s] Paso 2 OCR para planificador 1.2s [zonas(1)] (170 palabras)
-   [6.8s] Paso 2 planificador 0.0s: move[Maestros] | Abro el submenú Maestros.
-   [6.9s]     OCR 0.0s [igual], 170 palabras; "Maestros" -> 1 coincidencia(s)
-   [11.0s]   Pasó el ratón por "opción del menú Comercial [Maestros]" → (114,75) vía ocr("Maestros"); el submenú no abrió con el ratón: se pulsó la tecla Derecha [la pantalla cambió] (4.0s)
-   [12.8s] Paso 3 OCR para planificador 1.5s [zonas(1)] (152 palabras)
-   [12.8s] Paso 3 planificador 0.0s: click[Clientes] | Abro Clientes.
-   [13.0s]     OCR 0.0s [igual], 152 palabras; "Clientes" -> 1 coincidencia(s)
-   [14.7s]   Clic en "opción del submenú Maestros [Clientes]" → (210,75) vía ocr("Clientes") [la pantalla cambió] (1.7s)
-   [15.2s] Paso 4 OCR para planificador 0.1s [completo] (874 palabras)
-   [15.2s] Paso 4 planificador 0.0s: type_text[Buscar (nombre | documento):], click[Buscar] | Busco Ceiba.
-   [15.3s]     OCR 0.0s [igual], 874 palabras; "Buscar (nombre | documento):" -> 1 coincidencia(s)
-   [19.0s]   Escribió "Ceiba" en "campo de búsqueda [Buscar (nombre | documento):]" → campo en (253,126) vía ocr("Buscar (nombre o documento):")+campo [la pantalla cambió] (3.7s)
-   [20.0s]     OCR 0.9s [zonas(1)], 870 palabras; "Buscar" -> 2 coincidencia(s)
-   [21.7s]   Clic en "botón Buscar [Buscar]" → (782,126) vía ocr("Buscar") [la pantalla cambió] (2.6s)
-   [25.1s] Paso 5 OCR para planificador 3.0s [completo] (292 palabras)
-   [25.2s] Paso 5 planificador 0.0s: finish | Listo.
-   [25.2s] FIN terminada:  Búsqueda hecha.
+   [6.9s] Paso 2 planificador 0.0s: move[Maestros] | Abro el submenú Maestros.
+   [7.0s]     OCR 0.0s [igual], 170 palabras; "Maestros" -> 1 coincidencia(s)
+   [10.8s]   Pasó el ratón por "opción del menú Comercial [Maestros]" → (114,75) vía ocr("Maestros"); el submenú no abrió con el ratón: se pulsó la tecla Derecha [la pantalla cambió] (3.8s)
+   [12.5s] Paso 3 OCR para planificador 1.4s [zonas(1)] (152 palabras)
+   [12.5s] Paso 3 planificador 0.0s: click[Clientes] | Abro Clientes.
+   [12.6s]     OCR 0.0s [igual], 152 palabras; "Clientes" -> 1 coincidencia(s)
+   [14.3s]   Clic en "opción del submenú Maestros [Clientes]" → (210,75) vía ocr("Clientes") [la pantalla cambió] (1.7s)
+   [14.8s] Paso 4 OCR para planificador 0.1s [completo] (874 palabras)
+   [14.8s] Paso 4 planificador 0.0s: type_text[Buscar (nombre | documento):], click[Buscar] | Busco Ceiba.
+   [15.0s]     OCR 0.0s [igual], 874 palabras; "Buscar (nombre | documento):" -> 1 coincidencia(s)
+   [18.6s]   Escribió "Ceiba" en "campo de búsqueda [Buscar (nombre | documento):]" → campo en (253,126) vía ocr("Buscar (nombre o documento):")+campo [la pantalla cambió] (3.7s)
+   [19.4s]     OCR 0.7s [zonas(1)], 870 palabras; "Buscar" -> 2 coincidencia(s)
+   [21.1s]   Clic en "botón Buscar [Buscar]" → (782,126) vía ocr("Buscar") [la pantalla cambió] (2.4s)
+   [24.6s] Paso 5 OCR para planificador 3.1s [completo] (292 palabras)
+   [24.6s] Paso 5 planificador 0.0s: finish | Listo.
+   [24.6s] FIN terminada:  Búsqueda hecha.
 
-== g04: PASA | estado terminada | 60 s | pasos 8 | planificador 8 | consultas de visión 0
+== g04: PASA | estado terminada | 59 s | pasos 8 | planificador 8 | consultas de visión 0
    [0.0s] Modelos: planificador anthropic/claude-sonnet-5.5 | localizador anthropic/claude-sonnet-5.5
-   [1.6s] Paso 1 OCR para planificador 0.0s [completo] (340 palabras)
-   [1.6s] Paso 1 planificador 0.0s: click[Entendido], click[Comercial] | Cierro el aviso y abro Comercial.
-   [1.7s]     OCR 0.0s [igual], 340 palabras; "Entendido" -> 1 coincidencia(s)
-   [3.4s]   Clic en "botón del diálogo de novedades [Entendido]" → (819,435) vía ocr("Entendido") [la pantalla cambió] (1.7s)
-   [3.6s]     OCR 0.1s [completo], 164 palabras; "Comercial" -> 3 coincidencia(s)
-   [5.3s]   Clic en "menú superior Comercial [Comercial]" → (124,50) vía ocr("Comercial") [la pantalla cambió] (1.8s)
-   [6.8s] Paso 2 OCR para planificador 1.1s [zonas(1)] (170 palabras)
-   [6.8s] Paso 2 planificador 0.0s: move[Ventas] | Abro el submenú Ventas.
-   [6.9s]     OCR 0.0s [igual], 170 palabras; "Ventas" -> 1 coincidencia(s)
-   [10.7s]   Pasó el ratón por "opción del menú Comercial [Ventas]" → (106,97) vía ocr("Ventas"); el submenú no abrió con el ratón: se pulsó la tecla Derecha [la pantalla cambió] (3.8s)
-   [12.2s] Paso 3 OCR para planificador 1.1s [zonas(1)] (173 palabras)
-   [12.2s] Paso 3 planificador 0.0s: click[Pedidos] | Abro Pedidos.
-   [12.3s]     OCR 0.0s [igual], 173 palabras; "Pedidos" -> 1 coincidencia(s)
-   [14.0s]   Clic en "opción del submenú Ventas [Pedidos]" → (209,97) vía ocr("Pedidos") [la pantalla cambió] (1.7s)
-   [19.1s] Paso 4 OCR para planificador 4.7s [completo] (843 palabras)
-   [19.1s] Paso 4 planificador 0.0s: type_text[Desde:], type_text[Hasta:], click[Todos] | Fechas y lista Estado.
-   [19.2s]     OCR 0.0s [igual], 843 palabras; "Desde:" -> 1 coincidencia(s)
-   [23.1s]   Escribió "01/09/2026" en "campo Desde del filtro [Desde:]" → campo en (545,126) vía ocr("Desde:")+campo [la pantalla cambió] (3.9s)
-   [24.0s]     OCR 0.8s [zonas(1)], 844 palabras; "Hasta:" -> 1 coincidencia(s)
-   [27.9s]   Escribió "30/09/2026" en "campo Hasta del filtro [Hasta:]" → campo en (708,126) vía ocr("Hasta:")+campo [la pantalla cambió] (4.7s)
-   [29.7s]     OCR 1.8s [zonas(2)], 854 palabras; "Todos" -> 1 coincidencia(s)
-   [31.4s]   Clic en "lista desplegable Estado en la barra de filtros [Todos]" → (358,126) vía ocr("Todos")+dentro [la pantalla cambió] (3.5s)
-   [33.6s] Paso 5 OCR para planificador 1.7s [zonas(2)] (865 palabras)
-   [33.6s] Paso 5 planificador 0.0s: click[Entregado], click[Filtrar] | Entregado y filtrar.
-   [33.7s]     OCR 0.0s [igual], 865 palabras; "Entregado" -> 16 coincidencia(s)
-   [35.4s]   Clic en "opción de la lista desplegable Estado [Entregado]" → (373,203) vía ocr("Entregado") [la pantalla cambió] (1.7s)
-   [36.5s]     OCR 0.9s [zonas(1)], 856 palabras; "Filtrar" -> 3 coincidencia(s)
-   [38.2s]   Clic en "botón Filtrar [Filtrar]" → (862,126) vía ocr("Filtrar") [la pantalla cambió] (2.6s)
-   [44.0s] Paso 6 OCR para planificador 5.3s [completo] (874 palabras)
-   [44.0s] Paso 6 planificador 0.0s: click[Exportar lista…] | Exporto.
-   [44.1s]     OCR 0.0s [igual], 874 palabras; "Exportar lista…" -> 1 coincidencia(s)
-   [45.8s]   Clic en "botón de la barra de acciones [Exportar lista…]" → (1168,159) vía ocr("Exportar lista...") [la pantalla cambió] (1.7s)
-   [51.8s] Paso 7 OCR para planificador 5.6s [completo] (846 palabras)
-   [51.8s] Paso 7 planificador 0.0s: click[Exportar] | Confirmo.
-   [52.0s]     OCR 0.0s [igual], 846 palabras; "Exportar" -> 5 coincidencia(s)
-   [53.8s]   Clic en "botón del diálogo Exportar lista de pedidos [Exportar]" → (687,411) vía ocr("Exportar") [la pantalla cambió] (1.8s)
-   [59.5s] Paso 8 OCR para planificador 5.3s [completo] (816 palabras)
-   [59.5s] Paso 8 planificador 0.0s: finish | Listo.
-   [59.5s] FIN terminada:  Exportado.
+   [1.5s] Paso 1 OCR para planificador 0.0s [completo] (340 palabras)
+   [1.5s] Paso 1 planificador 0.0s: click[Entendido], click[Comercial] | Cierro el aviso y abro Comercial.
+   [1.6s]     OCR 0.0s [igual], 340 palabras; "Entendido" -> 1 coincidencia(s)
+   [3.3s]   Clic en "botón del diálogo de novedades [Entendido]" → (819,435) vía ocr("Entendido") [la pantalla cambió] (1.6s)
+   [3.5s]     OCR 0.1s [completo], 164 palabras; "Comercial" -> 3 coincidencia(s)
+   [5.2s]   Clic en "menú superior Comercial [Comercial]" → (124,50) vía ocr("Comercial") [la pantalla cambió] (1.8s)
+   [7.0s] Paso 2 OCR para planificador 1.4s [zonas(1)] (170 palabras)
+   [7.0s] Paso 2 planificador 0.0s: move[Ventas] | Abro el submenú Ventas.
+   [7.1s]     OCR 0.0s [igual], 170 palabras; "Ventas" -> 1 coincidencia(s)
+   [11.2s]   Pasó el ratón por "opción del menú Comercial [Ventas]" → (106,97) vía ocr("Ventas"); el submenú no abrió con el ratón: se pulsó la tecla Derecha [la pantalla cambió] (4.1s)
+   [13.1s] Paso 3 OCR para planificador 1.4s [zonas(1)] (173 palabras)
+   [13.1s] Paso 3 planificador 0.0s: click[Pedidos] | Abro Pedidos.
+   [13.2s]     OCR 0.0s [igual], 173 palabras; "Pedidos" -> 1 coincidencia(s)
+   [14.8s]   Clic en "opción del submenú Ventas [Pedidos]" → (209,97) vía ocr("Pedidos") [la pantalla cambió] (1.6s)
+   [19.9s] Paso 4 OCR para planificador 4.7s [completo] (843 palabras)
+   [19.9s] Paso 4 planificador 0.0s: type_text[Desde:], type_text[Hasta:], click[Todos] | Fechas y lista Estado.
+   [20.0s]     OCR 0.0s [igual], 843 palabras; "Desde:" -> 1 coincidencia(s)
+   [23.9s]   Escribió "01/09/2026" en "campo Desde del filtro [Desde:]" → campo en (545,126) vía ocr("Desde:")+campo [la pantalla cambió] (3.9s)
+   [24.9s]     OCR 0.8s [zonas(1)], 844 palabras; "Hasta:" -> 1 coincidencia(s)
+   [28.8s]   Escribió "30/09/2026" en "campo Hasta del filtro [Hasta:]" → campo en (708,126) vía ocr("Hasta:")+campo [la pantalla cambió] (4.7s)
+   [30.2s]     OCR 1.4s [zonas(2)], 854 palabras; "Todos" -> 1 coincidencia(s)
+   [31.9s]   Clic en "lista desplegable Estado en la barra de filtros [Todos]" → (358,126) vía ocr("Todos")+dentro [la pantalla cambió] (3.0s)
+   [34.1s] Paso 5 OCR para planificador 1.8s [zonas(2)] (865 palabras)
+   [34.1s] Paso 5 planificador 0.0s: click[Entregado], click[Filtrar] | Entregado y filtrar.
+   [34.3s]     OCR 0.0s [igual], 865 palabras; "Entregado" -> 16 coincidencia(s)
+   [35.9s]   Clic en "opción de la lista desplegable Estado [Entregado]" → (373,203) vía ocr("Entregado") [la pantalla cambió] (1.6s)
+   [37.0s]     OCR 1.0s [zonas(1)], 856 palabras; "Filtrar" -> 3 coincidencia(s)
+   [38.8s]   Clic en "botón Filtrar [Filtrar]" → (862,126) vía ocr("Filtrar") [la pantalla cambió] (2.8s)
+   [44.2s] Paso 6 OCR para planificador 5.0s [completo] (874 palabras)
+   [44.2s] Paso 6 planificador 0.0s: click[Exportar lista…] | Exporto.
+   [44.4s]     OCR 0.0s [igual], 874 palabras; "Exportar lista…" -> 1 coincidencia(s)
+   [46.0s]   Clic en "botón de la barra de acciones [Exportar lista…]" → (1168,159) vía ocr("Exportar lista...") [la pantalla cambió] (1.7s)
+   [51.3s] Paso 7 OCR para planificador 4.9s [completo] (846 palabras)
+   [51.4s] Paso 7 planificador 0.0s: click[Exportar] | Confirmo.
+   [51.5s]     OCR 0.0s [igual], 846 palabras; "Exportar" -> 5 coincidencia(s)
+   [53.2s]   Clic en "botón del diálogo Exportar lista de pedidos [Exportar]" → (687,411) vía ocr("Exportar") [la pantalla cambió] (1.7s)
+   [58.6s] Paso 8 OCR para planificador 5.0s [completo] (816 palabras)
+   [58.6s] Paso 8 planificador 0.0s: finish | Listo.
+   [58.6s] FIN terminada:  Exportado.
