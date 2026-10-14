@@ -138,3 +138,40 @@ test('OpenRouter - a Claude no se le envía modo de razonamiento ni response_for
   assert.ok(!('reasoning' in bodies[0]) && !('response_format' in bodies[0]), JSON.stringify(bodies[0]));
   assert.ok('reasoning' in bodies[1] && 'response_format' in bodies[1]);
 });
+
+test('OpenRouter - planificador con Claude: reglas+formato en el sistema con caché; historial recortado', async () => {
+  const { OpenRouterClient } = await import('../src/agent/openrouter.js');
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = 'sk-or-test';
+  const bodies: any[] = [];
+  globalThis.fetch = (async (_u: any, init: any) => {
+    bodies.push(JSON.parse(init.body));
+    const content = JSON.stringify({ pensamiento: 'ok', acciones: [{ action: 'wait', ms: 100 }] });
+    return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { cost: 0 } }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const c = new OpenRouterClient();
+    const params = {
+      systemPrompt: 'REGLAS',
+      taskInstruction: 'tarea',
+      screenshotPng: Buffer.from('x'),
+      actionHistory: Array.from({ length: 35 }, (_, i) => `acción ${i} ` + 'x'.repeat(400)),
+      resolution: { width: 1280, height: 800 },
+    };
+    await c.decideAction({ ...params, model: 'anthropic/claude-sonnet-5.5' });
+    await c.decideAction({ ...params, model: 'google/gemini-2.5-flash' });
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = prevKey;
+  }
+  const sysClaude = bodies[0].messages[0];
+  assert.equal(sysClaude.role, 'system');
+  assert.ok(Array.isArray(sysClaude.content) && sysClaude.content[0].cache_control?.type === 'ephemeral');
+  assert.ok(sysClaude.content[0].text.startsWith('REGLAS') && sysClaude.content[0].text.includes('"acciones"'), 'formato dentro del sistema');
+  const userText = bodies[0].messages[1].content[0].text as string;
+  assert.ok(!userText.includes('Acciones disponibles'), 'el formato ya no se repite en cada mensaje');
+  assert.ok(!userText.includes('acción 14 '), 'solo las últimas 20 entradas');
+  assert.ok(userText.includes('acción 34 ') && !userText.includes('x'.repeat(300)), 'entradas recortadas');
+  assert.equal(typeof bodies[1].messages[0].content, 'string', 'Gemini recibe el sistema como texto');
+});

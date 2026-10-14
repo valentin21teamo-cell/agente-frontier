@@ -259,6 +259,7 @@ export async function ocrRegion(pngBuf: Buffer, region: Rect, scale = 3): Promis
     { id: 'ZA', mode: 'gray', psm: '6' },
     { id: 'ZB', mode: 'gray', psm: '11' },
     { id: 'ZC', mode: 'light', psm: '6' },
+    { id: 'ZD', mode: 'invert', psm: '11' },
   ];
   const results = await Promise.all(
     variants.map(async (v) => {
@@ -524,4 +525,103 @@ export function screenTextForPrompt(words: OcrWord[], maxChars = 6000): string {
   let out = lines.join('\n');
   if (out.length > maxChars) out = out.slice(0, maxChars) + '\n(...)';
   return out;
+}
+
+/**
+ * Zonas que cambiaron entre dos capturas del mismo tamaño: celdas de 16x16 con algún píxel distinto,
+ * agrupadas en rectángulos (componentes conexas). null si las capturas no son comparables.
+ */
+export function changedRegions(prevPng: Buffer, curPng: Buffer, tile = 16): Rect[] | null {
+  const a = PNG.sync.read(prevPng);
+  const b = PNG.sync.read(curPng);
+  if (a.width !== b.width || a.height !== b.height) return null;
+  const W = a.width;
+  const H = a.height;
+  const tw = Math.ceil(W / tile);
+  const th = Math.ceil(H / tile);
+  const changed = new Uint8Array(tw * th);
+  for (let ty = 0; ty < th; ty++) {
+    for (let tx = 0; tx < tw; tx++) {
+      let diff = false;
+      for (let y = ty * tile; y < Math.min(H, (ty + 1) * tile) && !diff; y++) {
+        const row = y * W * 4;
+        for (let x = tx * tile; x < Math.min(W, (tx + 1) * tile); x++) {
+          const i = row + x * 4;
+          if (a.data[i] !== b.data[i] || a.data[i + 1] !== b.data[i + 1] || a.data[i + 2] !== b.data[i + 2]) {
+            diff = true;
+            break;
+          }
+        }
+      }
+      if (diff) changed[ty * tw + tx] = 1;
+    }
+  }
+  const seen = new Uint8Array(tw * th);
+  const regions: Rect[] = [];
+  for (let start = 0; start < changed.length; start++) {
+    if (!changed[start] || seen[start]) continue;
+    let minX = tw, minY = th, maxX = -1, maxY = -1;
+    const stack = [start];
+    seen[start] = 1;
+    while (stack.length) {
+      const k = stack.pop()!;
+      const kx = k % tw;
+      const ky = Math.floor(k / tw);
+      minX = Math.min(minX, kx); maxX = Math.max(maxX, kx);
+      minY = Math.min(minY, ky); maxY = Math.max(maxY, ky);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = kx + dx;
+          const ny = ky + dy;
+          if (nx < 0 || ny < 0 || nx >= tw || ny >= th) continue;
+          const n = ny * tw + nx;
+          if (changed[n] && !seen[n]) {
+            seen[n] = 1;
+            stack.push(n);
+          }
+        }
+      }
+    }
+    regions.push({ x: minX * tile, y: minY * tile, w: Math.min(W, (maxX + 1) * tile) - minX * tile, h: Math.min(H, (maxY + 1) * tile) - minY * tile });
+  }
+  return regions;
+}
+
+const intersects = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/**
+ * OCR incremental: si desde la captura anterior solo cambiaron zonas pequeñas (escribir en un campo, abrir una
+ * lista, mover el puntero), relee solo esas zonas y conserva el resto de palabras. Las palabras que tocan una zona
+ * cambiada se descartan y la zona se amplía para releerlas completas. Si cambió mucho, OCR completo.
+ * Devuelve también cómo se hizo, para la bitácora.
+ */
+export async function ocrIncremental(
+  png: Buffer,
+  prev: { png: Buffer; words: OcrWord[] } | null
+): Promise<{ words: OcrWord[]; modo: 'completo' | 'igual' | 'zonas'; zonas: number }> {
+  if (!prev) return { words: await ocrScreenshot(png), modo: 'completo', zonas: 0 };
+  const regions = changedRegions(prev.png, png);
+  if (!regions) return { words: await ocrScreenshot(png), modo: 'completo', zonas: 0 };
+  if (regions.length === 0) return { words: prev.words, modo: 'igual', zonas: 0 };
+  const { width: W, height: H } = PNG.sync.read(png);
+  // Ampliar cada zona: margen y palabras completas que la tocan.
+  const zonas = regions.map((r) => {
+    let z: Rect = { x: Math.max(0, r.x - 40), y: Math.max(0, r.y - 6), w: r.w + 80, h: r.h + 12 };
+    for (const w of prev.words) {
+      if (!intersects(w.box, z)) continue;
+      const x1 = Math.min(z.x, w.box.x - 4);
+      const y1 = Math.min(z.y, w.box.y - 4);
+      const x2 = Math.max(z.x + z.w, w.box.x + w.box.w + 4);
+      const y2 = Math.max(z.y + z.h, w.box.y + w.box.h + 4);
+      z = { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+    }
+    const x = Math.max(0, Math.round(z.x));
+    const y = Math.max(0, Math.round(z.y));
+    return { x, y, w: Math.min(W - x, Math.round(z.w)), h: Math.min(H - y, Math.round(z.h)) };
+  });
+  const area = zonas.reduce((s, z) => s + z.w * z.h, 0);
+  if (zonas.length > 8 || area > 0.15 * W * H) return { words: await ocrScreenshot(png), modo: 'completo', zonas: zonas.length };
+  const kept = prev.words.filter((w) => !zonas.some((z) => intersects(w.box, z)));
+  const nuevas = (await Promise.all(zonas.map((z) => ocrRegion(png, z, 3)))).flat();
+  return { words: [...kept, ...nuevas], modo: 'zonas', zonas: zonas.length };
 }

@@ -130,7 +130,7 @@ export function parsePlan(content: string): PlannerPlan {
 
 const ACTION_FORMATS = [
   'Devuelve EXACTAMENTE un objeto JSON con esta forma:',
-  '{"pensamiento": "<qué ves y qué harás>", "acciones": [<de 1 a 6 acciones>]}',
+  '{"pensamiento": "<1 o 2 frases cortas: qué ves, qué harás y los datos que debas recordar, como sumas parciales>", "acciones": [<de 1 a 6 acciones>]}',
   '',
   'Acciones disponibles. En "objetivo" describe QUÉ elemento (tipo y zona) y en "texto" copia EXACTAMENTE el texto visible',
   'del elemento tal como aparece en pantalla (para campos: el texto de su etiqueta). El sistema lo encuentra con OCR',
@@ -186,7 +186,15 @@ export class OpenRouterClient implements VisionJsonCaller {
   }): Promise<{ content: string; costUsd: number }> {
     const imageUrl = `data:image/png;base64,${params.imagePng.toString('base64')}`;
     const messages: unknown[] = [];
-    if (params.systemPrompt) messages.push({ role: 'system', content: params.systemPrompt });
+    if (params.systemPrompt) {
+      // Claude: el prompt de sistema (reglas + formato, igual en todos los pasos) se marca para la caché de
+      // Anthropic; los pasos siguientes lo leen a una fracción del precio de entrada.
+      messages.push(
+        isAnthropicModel(params.model)
+          ? { role: 'system', content: [{ type: 'text', text: params.systemPrompt, cache_control: { type: 'ephemeral' } }] }
+          : { role: 'system', content: params.systemPrompt }
+      );
+    }
     messages.push({
       role: 'user',
       content: [
@@ -290,7 +298,8 @@ export class OpenRouterClient implements VisionJsonCaller {
     /** Modelo del planificador para esta tarea (por defecto MODEL_ID). */
     model?: string;
   }): Promise<PlannerStepResult> {
-    const history = params.actionHistory.slice(-30);
+    // Últimas 20 entradas, cada una recortada: el historial era la parte del prompt que más crecía por paso.
+    const history = params.actionHistory.slice(-20).map((h) => (h.length > 240 ? `${h.slice(0, 237)}...` : h));
     const text = [
       `Resolución de pantalla: ${params.resolution.width}x${params.resolution.height} píxeles.`,
       `OBJETIVO DE LA TAREA: "${params.taskInstruction}"`,
@@ -303,9 +312,10 @@ export class OpenRouterClient implements VisionJsonCaller {
       params.screenText
         ? `TEXTO DETECTADO EN PANTALLA POR OCR (de arriba abajo; "y" es la altura en píxeles; " | " separa columnas; puede tener errores menores):\n${params.screenText}\n\nCuando un elemento aparezca en esta lista, copia en "texto" EXACTAMENTE esa cadena (así el clic es preciso). Usa esta lista también para leer y contar datos de tablas, verificando con la imagen.`
         : '',
-      'Observa detenidamente la captura de pantalla adjunta (estado ACTUAL).',
-      ACTION_FORMATS,
+      'Observa detenidamente la captura de pantalla adjunta (estado ACTUAL) y responde con el formato indicado en las instrucciones.',
     ].join('\n');
+    // Reglas y formato de acciones van juntos en el mensaje de sistema: son fijos y así se pueden cachear.
+    const systemPrompt = `${params.systemPrompt}\n\n${ACTION_FORMATS}`;
 
     let lastErr: Error | null = null;
     let totalCost = 0;
@@ -313,7 +323,7 @@ export class OpenRouterClient implements VisionJsonCaller {
     for (let i = 0; i < 3; i++) {
       const { content, costUsd } = await this.callVision({
         model: params.model || this.modelId,
-        systemPrompt: params.systemPrompt,
+        systemPrompt,
         text:
           i === 0
             ? text

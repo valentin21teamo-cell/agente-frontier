@@ -214,3 +214,24 @@ test('OCR - etiqueta con dos puntos gana a la cabecera de columna con el mismo n
   const m = findTextMatches(await ocrScreenshot(buf), 'Estado:')[0];
   assert.ok(m && m.box.y < 140, `debe elegir el filtro de arriba (y≈121), no la cabecera (y≈159): ${JSON.stringify(m?.box)}`);
 });
+
+test('OCR incremental: tras escribir en un campo solo relee esa zona y los textos quedan en el mismo sitio', { timeout: 90000 }, async (t) => {
+  if (!(await ocrAvailable())) { t.skip('Tesseract no está instalado'); return; }
+  const { ocrIncremental, changedRegions } = await import('../src/agent/ocr.js');
+  const antes = fs.readFileSync('test/fixtures/gestora-form-vacio.png');
+  const despues = fs.readFileSync('test/fixtures/gestora-form-nombre.png');
+  const zonas = changedRegions(antes, despues)!;
+  assert.ok(zonas.length >= 1 && zonas.length <= 4, JSON.stringify(zonas));
+  const prev = { png: antes, words: await ocrScreenshot(antes) };
+  const inc = await ocrIncremental(despues, prev);
+  assert.equal(inc.modo, 'zonas');
+  const completo = await ocrScreenshot(despues);
+  for (const texto of ['Nombre o razón social', 'Número de documento', 'Guardar', 'Papelería Los Andes']) {
+    const a = findTextMatches(completo, texto)[0];
+    const b = findTextMatches(inc.words, texto)[0];
+    assert.ok(a && b, `"${texto}" debe leerse en ambos`);
+    assert.ok(Math.abs(a.box.x - b.box.x) <= 3 && Math.abs(a.box.y - b.box.y) <= 3, `"${texto}" ${JSON.stringify(a.box)} vs ${JSON.stringify(b.box)}`);
+  }
+  const igual = await ocrIncremental(despues, { png: despues, words: inc.words });
+  assert.equal(igual.modo, 'igual', 'sin cambios no se vuelve a leer');
+});
